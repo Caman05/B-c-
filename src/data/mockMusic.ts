@@ -3,11 +3,11 @@ import { Track } from '../types';
 export const PLAYLIST: Track[] = [
   {
     id: 'track-1',
-    title: 'Biển Lặng',
-    artist: 'Hải Lưu Phong',
-    audioUrl: 'synth:220',
+    title: 'Wo Ai Ni',
+    artist: 'Trash Dee',
+    audioUrl: '/Wo Ai Ni - Trash Dee (youtube).mp3',
     isActive: true,
-    duration: 194,
+    duration: 118,
     rootFreq: 220,
     createdAt: '2026-01-10T10:00:00.000Z',
     updatedAt: '2026-01-10T10:00:00.000Z',
