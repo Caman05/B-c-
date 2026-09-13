@@ -1,0 +1,6 @@
+{
+  "name": "BỂ CÁ",
+  "description": "A bright, sunlit tropical aquarium character hub.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

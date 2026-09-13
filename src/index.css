@@ -1,0 +1,332 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --bg-surface: #e6f9fe;
+    --bg-water-top: #d2f4fe;
+    --bg-water-mid: #93e2fc;
+    --bg-water-deep: #38bdf8;
+    --text-primary: #0a2540;
+    --text-secondary: #19436b;
+    --text-muted: #487399;
+  }
+
+  :root[data-theme='dark'],
+  .dark {
+    --bg-surface: #0a1b2d;
+    --bg-water-top: #061524;
+    --bg-water-mid: #092036;
+    --bg-water-deep: #0c2b48;
+    --text-primary: #f0f9ff;
+    --text-secondary: #bae6fd;
+    --text-muted: #7dd3fc;
+  }
+
+  body {
+    background: linear-gradient(180deg, #dcf8ff 0%, #b8eefc 35%, #7dd3fc 75%, #38bdf8 100%);
+    color: var(--text-primary);
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif !important;
+    min-height: 100vh;
+  }
+
+  .dark body {
+    background: linear-gradient(180deg, #030d17 0%, #061524 35%, #092036 75%, #0c2b48 100%);
+    color: var(--text-primary);
+  }
+
+  * {
+    font-family: inherit !important;
+  }
+
+  /* Smooth 200ms theme transition across core surface containers */
+  body,
+  aside,
+  header,
+  main,
+  nav,
+  input,
+  select,
+  textarea,
+  .glass-panel,
+  .glass-panel-subtle,
+  .glass-card {
+    transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease, box-shadow 200ms ease;
+  }
+}
+.glass-panel {
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  box-shadow: 0 10px 32px 0 rgba(8, 145, 178, 0.08), 0 2px 6px 0 rgba(2, 132, 199, 0.04), inset 0 1px 0 0 rgba(255, 255, 255, 1);
+}
+
+.glass-panel-subtle {
+  background: rgba(255, 255, 255, 0.62);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 4px 16px 0 rgba(8, 145, 178, 0.06);
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  box-shadow: 0 6px 22px -2px rgba(8, 145, 178, 0.09), 0 2px 6px -1px rgba(14, 116, 144, 0.05), inset 0 1px 0 0 rgba(255, 255, 255, 0.95);
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-card:hover {
+  transform: translateY(-4px);
+  background: rgba(255, 255, 255, 0.94);
+  border-color: rgba(56, 189, 248, 0.5);
+  box-shadow: 0 14px 34px -4px rgba(8, 145, 178, 0.16), 0 4px 12px -2px rgba(2, 132, 199, 0.08), inset 0 0 16px rgba(186, 230, 253, 0.35);
+}
+
+/* ================= DARK MODE GLASS SURFACES ================= */
+.dark .glass-panel {
+  background: rgba(11, 26, 44, 0.88);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  box-shadow: 0 10px 32px 0 rgba(0, 0, 0, 0.45), 0 2px 6px 0 rgba(2, 132, 199, 0.08), inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
+}
+
+.dark .glass-panel-subtle {
+  background: rgba(14, 33, 56, 0.75);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(56, 189, 248, 0.16);
+  box-shadow: 0 4px 16px 0 rgba(0, 0, 0, 0.35);
+}
+
+.dark .glass-card {
+  background: rgba(16, 38, 64, 0.88);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  box-shadow: 0 6px 22px -2px rgba(0, 0, 0, 0.4), 0 2px 6px -1px rgba(0, 0, 0, 0.3), inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dark .glass-card:hover {
+  transform: translateY(-4px);
+  background: rgba(22, 50, 82, 0.96);
+  border-color: rgba(56, 189, 248, 0.55);
+  box-shadow: 0 14px 34px -4px rgba(0, 0, 0, 0.65), 0 4px 12px -2px rgba(2, 132, 199, 0.2), inset 0 0 16px rgba(56, 189, 248, 0.2);
+}
+
+/* Daytime Sun Caustic Shimmer */
+@keyframes causticShift {
+  0%, 100% {
+    opacity: 0.35;
+    transform: scale(1) translate(0, 0) rotate(0deg);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(1.05) translate(-1%, 2%) rotate(1deg);
+  }
+}
+
+.caustics-layer {
+  animation: causticShift 12s ease-in-out infinite alternate;
+}
+
+/* Translucent Bubbles Rising */
+@keyframes bubbleFloat {
+  0% {
+    transform: translateY(105vh) translateX(0) scale(0.8);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.75;
+  }
+  50% {
+    transform: translateY(50vh) translateX(15px) scale(1);
+    opacity: 0.85;
+  }
+  85% {
+    opacity: 0.65;
+  }
+  100% {
+    transform: translateY(-10vh) translateX(-10px) scale(1.1);
+    opacity: 0;
+  }
+}
+
+.bubble-particle {
+  animation: bubbleFloat linear infinite;
+}
+
+/* Gentle Swimming Tropical Fish */
+@keyframes fishSwimRight {
+  0% {
+    transform: translateX(-15vw) translateY(0) scale(1);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.45;
+  }
+  50% {
+    transform: translateX(50vw) translateY(-20px) scale(1);
+    opacity: 0.55;
+  }
+  90% {
+    opacity: 0.4;
+  }
+  100% {
+    transform: translateX(115vw) translateY(10px) scale(1);
+    opacity: 0;
+  }
+}
+
+@keyframes fishSwimLeft {
+  0% {
+    transform: translateX(115vw) translateY(0) scaleX(-1);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.4;
+  }
+  50% {
+    transform: translateX(50vw) translateY(25px) scaleX(-1);
+    opacity: 0.5;
+  }
+  85% {
+    opacity: 0.35;
+  }
+  100% {
+    transform: translateX(-15vw) translateY(-10px) scaleX(-1);
+    opacity: 0;
+  }
+}
+
+.animate-fish-right {
+  animation: fishSwimRight 38s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+}
+
+.animate-fish-left {
+  animation: fishSwimLeft 48s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+}
+
+/* Plant Sway */
+@keyframes gentleSway {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(3deg) skewX(2deg);
+  }
+}
+
+.sway-slow {
+  transform-origin: bottom center;
+  animation: gentleSway 9s ease-in-out infinite alternate;
+}
+
+.sway-reverse {
+  transform-origin: bottom center;
+  animation: gentleSway 12s ease-in-out infinite alternate-reverse;
+}
+
+/* Floating Bubbly Animation for Entrance Tagline */
+@keyframes bubblyHover {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+.animate-bubbly {
+  animation: bubblyHover 3s ease-in-out infinite;
+}
+
+/* Sleek Daytime Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(224, 247, 254, 0.6);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(56, 189, 248, 0.45);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(14, 165, 233, 0.7);
+}
+
+/* Tiny Music Notes & Bubble Effects from Shell Button */
+@keyframes noteFloatUp1 {
+  0% {
+    transform: translate(0, 0) scale(0.5);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.85;
+  }
+  75% {
+    opacity: 0.65;
+  }
+  100% {
+    transform: translate(-10px, -32px) scale(0.85);
+    opacity: 0;
+  }
+}
+
+@keyframes noteFloatUp2 {
+  0% {
+    transform: translate(0, 0) scale(0.45);
+    opacity: 0;
+  }
+  25% {
+    opacity: 0.9;
+  }
+  75% {
+    opacity: 0.6;
+  }
+  100% {
+    transform: translate(12px, -38px) scale(0.8);
+    opacity: 0;
+  }
+}
+
+@keyframes noteFloatUp3 {
+  0% {
+    transform: translate(0, 0) scale(0.4);
+    opacity: 0;
+  }
+  30% {
+    opacity: 0.8;
+  }
+  80% {
+    opacity: 0.5;
+  }
+  100% {
+    transform: translate(-3px, -44px) scale(0.75);
+    opacity: 0;
+  }
+}
+
+.animate-music-note-1 {
+  animation: noteFloatUp1 2.6s ease-out infinite;
+}
+
+.animate-music-note-2 {
+  animation: noteFloatUp2 3.2s ease-out infinite 0.9s;
+}
+
+.animate-music-note-3 {
+  animation: noteFloatUp3 2.9s ease-out infinite 1.7s;
+}
+
