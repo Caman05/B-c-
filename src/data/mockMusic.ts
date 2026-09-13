@@ -5,7 +5,7 @@ export const PLAYLIST: Track[] = [
     id: 'track-1',
     title: 'Wo Ai Ni',
     artist: 'Trash Dee',
-    audioUrl: '/Wo Ai Ni - Trash Dee (youtube).mp3',
+    audioUrl: '/wo-ai-ni.mp3',
     isActive: true,
     duration: 118,
     rootFreq: 220,
