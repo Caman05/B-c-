@@ -13,7 +13,8 @@ import {
   X,
   ListMusic,
   AlertCircle,
-  Loader2
+  Loader2,
+  Shuffle
 } from 'lucide-react';
 
 interface MusicPlayerProps {
@@ -121,14 +122,31 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
   const progressTimerRef = useRef<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const playedHistoryRef = useRef<number[]>([]);
+  const recentlyPlayedIndicesRef = useRef<number[]>([]);
+  const hasInitializedRandomRef = useRef<boolean>(false);
 
-  // Load active tracks dynamically (Strictly is_active = true)
+  // Load active tracks dynamically and shuffle on initial load
   const fetchActiveTracks = async () => {
     setIsLoading(true);
     try {
       const active = await musicService.getActiveTracks();
-      setTracks(active);
-      if (active.length > 0 && currentTrackIndex >= active.length) {
+      if (active.length > 0) {
+        // 1. Randomly shuffle the active track list on page load / initial encounter
+        const shuffled = musicService.shuffleTracks(active);
+        setTracks(shuffled);
+
+        // 2. Select a random starting track index if not initialized
+        if (!hasInitializedRandomRef.current) {
+          hasInitializedRandomRef.current = true;
+          const initialRandomIndex = Math.floor(Math.random() * shuffled.length);
+          setCurrentTrackIndex(initialRandomIndex);
+          recentlyPlayedIndicesRef.current = [initialRandomIndex];
+        } else if (currentTrackIndex >= shuffled.length) {
+          setCurrentTrackIndex(0);
+        }
+      } else {
+        setTracks([]);
         setCurrentTrackIndex(0);
       }
     } catch (err) {
@@ -152,6 +170,16 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
     };
   }, []);
 
+  // Ensure that if user starts playback for the first time, we start at a random track
+  useEffect(() => {
+    if (isPlaying && tracks.length > 1 && !hasInitializedRandomRef.current) {
+      hasInitializedRandomRef.current = true;
+      const initialRandomIndex = Math.floor(Math.random() * tracks.length);
+      setCurrentTrackIndex(initialRandomIndex);
+      recentlyPlayedIndicesRef.current = [initialRandomIndex];
+    }
+  }, [isPlaying, tracks.length]);
+
   const currentTrack: Track | undefined = tracks[currentTrackIndex] || tracks[0];
 
   // Reset cover error when track changes
@@ -168,6 +196,42 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
   const effectiveDuration = (isHttpAudio && audioDuration > 0)
     ? audioDuration
     : (currentTrack?.duration && currentTrack.duration > 0 ? currentTrack.duration : 180);
+
+  // Automatically or manually switch to a random next track (NO IMMEDIATE DUPLICATES)
+  const playNextRandomTrack = () => {
+    if (tracks.length === 0) return;
+    if (tracks.length === 1) {
+      setCurrentTime(0);
+      if (audioRef.current && isHttpAudio) {
+        audioRef.current.currentTime = 0;
+        if (isPlaying) audioRef.current.play().catch(() => {});
+      }
+      return;
+    }
+
+    // Record current track in playback history for the "Previous" button
+    playedHistoryRef.current.push(currentTrackIndex);
+    if (playedHistoryRef.current.length > 50) {
+      playedHistoryRef.current.shift();
+    }
+
+    // Pick next index using musicService, GUARANTEEING it is different from currentTrackIndex
+    const nextIndex = musicService.getRandomNextTrackIndex(
+      currentTrackIndex,
+      tracks.length,
+      recentlyPlayedIndicesRef.current
+    );
+
+    // Track recently played indices to complete a full cycle across all tracks
+    recentlyPlayedIndicesRef.current.push(nextIndex);
+    if (recentlyPlayedIndicesRef.current.length >= tracks.length) {
+      recentlyPlayedIndicesRef.current = [nextIndex];
+    }
+
+    setAudioError(null);
+    setCurrentTime(0);
+    setCurrentTrackIndex(nextIndex);
+  };
 
   // Initialize HTML5 Audio element with robust events and strict error logging
   useEffect(() => {
@@ -190,7 +254,8 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
     };
 
     const onEnded = () => {
-      handleNext();
+      // Auto-advance to random next track when current track finishes
+      playNextRandomTrack();
     };
 
     const onError = () => {
@@ -248,28 +313,6 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
               return;
             }
 
-            // Inspect and log track development info
-            const inspection = await storageService.inspectAudioUrl(currentTrack, resolvedUrl);
-            if (isCancelled) return;
-
-            if (!inspection.ok) {
-              console.warn('[MusicPlayer Playback Preflight Failed]', {
-                trackId: currentTrack.id,
-                title: currentTrack.title,
-                url: resolvedUrl,
-                status: inspection.status,
-                error: inspection.error,
-              });
-              setAudioError(
-                `Không thể phát bài hát "${currentTrack.title}". Tệp âm thanh không khả dụng.`
-              );
-              if (audioRef.current) {
-                audioRef.current.removeAttribute('src');
-                audioRef.current.load();
-              }
-              return;
-            }
-
             const audio = audioRef.current;
             if (!audio) return;
 
@@ -280,22 +323,48 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
             }
 
             audio.volume = effectiveVol;
-            audio.play().catch((err) => {
-              if (isCancelled) return;
-              if (err?.name === 'AbortError') return;
-              console.warn('[MusicPlayer Play Catch]', {
-                trackId: currentTrack.id,
-                title: currentTrack.title,
-                src: audio.src,
-                errorCode: audio.error?.code,
-                errorMessage: audio.error?.message,
-                err,
+
+            const playPromise = audio.play();
+            if (playPromise !== undefined) {
+              playPromise.catch((err) => {
+                if (isCancelled) return;
+                if (err?.name === 'AbortError') return;
+
+                if (err?.name === 'NotAllowedError') {
+                  // Browser autoplay policy prevented playback without prior user interaction
+                  console.log('[MusicPlayer] Autoplay prevented by browser, waiting for user gesture.');
+                  const unlockPlayback = () => {
+                    if (audioRef.current && isPlaying) {
+                      audioRef.current.play().catch(() => {});
+                    }
+                    try {
+                      synthEngine.init();
+                    } catch {
+                      // ignore
+                    }
+                    window.removeEventListener('pointerdown', unlockPlayback);
+                    window.removeEventListener('keydown', unlockPlayback);
+                    window.removeEventListener('touchstart', unlockPlayback);
+                  };
+                  window.addEventListener('pointerdown', unlockPlayback, { once: true });
+                  window.addEventListener('keydown', unlockPlayback, { once: true });
+                  window.addEventListener('touchstart', unlockPlayback, { once: true });
+                  return;
+                }
+
+                console.warn('[MusicPlayer Audio Play Catch]', {
+                  trackId: currentTrack.id,
+                  title: currentTrack.title,
+                  src: audio.src,
+                  errorCode: audio.error?.code,
+                  errorMessage: audio.error?.message,
+                  err,
+                });
+                setAudioError(
+                  `Không thể phát bài hát "${currentTrack.title}". Kiểm tra Audio URL / Supabase Storage.`
+                );
               });
-              // Keep in error state without silent fallback
-              setAudioError(
-                `Không thể phát bài hát "${currentTrack.title}". Kiểm tra Audio URL / Supabase Storage.`
-              );
-            });
+            }
           } catch (err: any) {
             if (isCancelled) return;
             console.error('[MusicPlayer Track Resolution Failed]', err);
@@ -337,7 +406,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
       progressTimerRef.current = window.setInterval(() => {
         setCurrentTime((prev) => {
           if (prev >= effectiveDuration) {
-            handleNext();
+            playNextRandomTrack();
             return 0;
           }
           return prev + 1;
@@ -352,7 +421,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
     return () => {
       if (progressTimerRef.current) clearInterval(progressTimerRef.current);
     };
-  }, [isPlaying, effectiveDuration, isHttpAudio]);
+  }, [isPlaying, effectiveDuration, isHttpAudio, tracks.length, currentTrackIndex]);
 
   // Close panel on outside click without stopping audio
   useEffect(() => {
@@ -371,27 +440,45 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
     };
   }, [isExpanded]);
 
-  // Next Track handler
+  // Next Track handler (always picks a random non-duplicate next track)
   const handleNext = () => {
-    if (tracks.length === 0) return;
-    setAudioError(null);
-    setCurrentTime(0);
-    setCurrentTrackIndex((prev) => (prev + 1) % tracks.length);
+    playNextRandomTrack();
   };
 
-  // Previous Track handler (smart return to beginning if played > 3s)
+  // Previous Track handler (smart return to beginning if played > 3s, or return to past played track)
   const handlePrev = () => {
     if (tracks.length === 0) return;
     setAudioError(null);
     if (currentTime > 3) {
       setCurrentTime(0);
-      if (audioRef.current) {
+      if (audioRef.current && isHttpAudio) {
         audioRef.current.currentTime = 0;
       }
       return;
     }
     setCurrentTime(0);
-    setCurrentTrackIndex((prev) => (prev - 1 + tracks.length) % tracks.length);
+    if (playedHistoryRef.current.length > 0) {
+      const prevIndex = playedHistoryRef.current.pop()!;
+      if (prevIndex >= 0 && prevIndex < tracks.length && prevIndex !== currentTrackIndex) {
+        setCurrentTrackIndex(prevIndex);
+        return;
+      }
+    }
+    // Fallback: pick another random track other than current
+    const fallbackIndex = musicService.getRandomNextTrackIndex(currentTrackIndex, tracks.length);
+    setCurrentTrackIndex(fallbackIndex);
+  };
+
+  // Manual re-shuffle handler
+  const handleShufflePlaylist = () => {
+    if (tracks.length <= 1) return;
+    const shuffled = musicService.shuffleTracks(tracks);
+    setTracks(shuffled);
+    const newIdx = Math.floor(Math.random() * shuffled.length);
+    setCurrentTrackIndex(newIdx);
+    setCurrentTime(0);
+    playedHistoryRef.current = [];
+    recentlyPlayedIndicesRef.current = [newIdx];
   };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -499,6 +586,17 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
               </div>
 
               <div className="flex items-center gap-1">
+                {/* Shuffle Button */}
+                <button
+                  type="button"
+                  onClick={handleShufflePlaylist}
+                  className="p-1.5 rounded-lg border border-slate-200 bg-white/80 hover:bg-cyan-50 hover:border-cyan-300 text-slate-500 hover:text-cyan-800 transition-colors cursor-pointer text-xs flex items-center gap-1"
+                  title="Xáo trộn ngẫu nhiên danh sách phát"
+                  aria-label="Xáo trộn ngẫu nhiên"
+                >
+                  <Shuffle className="w-3.5 h-3.5" />
+                </button>
+
                 {/* Toggle Playlist button */}
                 <button
                   type="button"

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Volume2, VolumeX, Waves, Sparkles } from 'lucide-react';
+import { synthEngine } from '../utils/audioSynth';
 
 interface EntryScreenProps {
   onEnter: (enableAudio: boolean) => void;
@@ -10,10 +11,18 @@ export const EntryScreen: React.FC<EntryScreenProps> = ({ onEnter }) => {
   const [isEntering, setIsEntering] = useState(false);
 
   const handleEnterClick = () => {
+    // Prime Web Audio context immediately inside direct user gesture
+    if (enableSound) {
+      try {
+        synthEngine.init();
+      } catch {
+        // ignore
+      }
+    }
     setIsEntering(true);
     setTimeout(() => {
       onEnter(enableSound);
-    }, 600);
+    }, 450);
   };
 
   return (

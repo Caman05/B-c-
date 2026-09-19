@@ -697,6 +697,70 @@ class MusicService {
     this.saveLocalTracks(normalized);
     return true;
   }
+
+  /**
+   * SHUFFLE / RANDOM UTILITIES:
+   * Shuffles an array of tracks using Fisher-Yates algorithm.
+   * Returns a new array copy without mutating the original.
+   */
+  public shuffleTracks(tracks: Track[]): Track[] {
+    if (!tracks || tracks.length <= 1) return [...(tracks || [])];
+    const shuffled = [...tracks];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+  }
+
+  /**
+   * Computes the next track index randomly.
+   * GUARANTEE: The returned index is strictly different from currentIndex (no immediate duplicate playback).
+   * Also avoids recently played indices if possible to ensure variety across the whole playlist.
+   */
+  public getRandomNextTrackIndex(
+    currentIndex: number,
+    total: number,
+    recentlyPlayedIndices: number[] = []
+  ): number {
+    if (total <= 1) return 0;
+
+    // 1. Pick from indices that are neither current nor in recent history
+    const unplayedCandidates: number[] = [];
+    for (let i = 0; i < total; i++) {
+      if (i !== currentIndex && !recentlyPlayedIndices.includes(i)) {
+        unplayedCandidates.push(i);
+      }
+    }
+
+    if (unplayedCandidates.length > 0) {
+      const randomIndex = Math.floor(Math.random() * unplayedCandidates.length);
+      return unplayedCandidates[randomIndex];
+    }
+
+    // 2. If all other tracks have been played, allow any track EXCEPT currentIndex
+    const fallbackCandidates: number[] = [];
+    for (let i = 0; i < total; i++) {
+      if (i !== currentIndex) {
+        fallbackCandidates.push(i);
+      }
+    }
+
+    const randomIndex = Math.floor(Math.random() * fallbackCandidates.length);
+    return fallbackCandidates[randomIndex];
+  }
+
+  /**
+   * Picks a random track from a collection, avoiding excludeId if possible.
+   */
+  public getRandomTrack(tracks: Track[], excludeId?: string): Track | null {
+    if (!tracks || tracks.length === 0) return null;
+    if (tracks.length === 1) return tracks[0];
+    const candidates = tracks.filter((t) => t.id !== excludeId);
+    if (candidates.length === 0) return tracks[0];
+    const randomIndex = Math.floor(Math.random() * candidates.length);
+    return candidates[randomIndex];
+  }
 }
 
 export const musicService = new MusicService();
