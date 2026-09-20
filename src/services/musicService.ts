@@ -12,7 +12,7 @@ const DEFAULT_TRACKS: Track[] = [
     title: 'Biển Lặng',
     artist: 'Hải Lưu Phong',
     coverUrl: '',
-    audioUrl: 'synth:220',
+    audioUrl: '/audio/wo-ai-ni.mp3',
     audioPath: undefined,
     storageBucket: 'music',
     isActive: true,
