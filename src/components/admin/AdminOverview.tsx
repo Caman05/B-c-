@@ -4,6 +4,7 @@ import { characterRepository } from '../../services/characterRepository';
 import { tagRepository } from '../../services/tagRepository';
 import { musicService } from '../../services/musicService';
 import { auditService } from '../../services/auditService';
+import { notificationService } from '../../services/notificationService';
 import { 
   Fish, 
   Tag as TagIcon, 
@@ -14,7 +15,8 @@ import {
   ArrowRight, 
   Clock, 
   Activity,
-  Plus
+  Plus,
+  Bell
 } from 'lucide-react';
 
 interface AdminOverviewProps {
@@ -34,6 +36,8 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({
   const [tags, setTags] = useState<Tag[]>([]);
   const [tracks, setTracks] = useState<Track[]>([]);
   const [recentLogs, setRecentLogs] = useState(auditService.getRecentLogs(8));
+  const [unreadNotifCount, setUnreadNotifCount] = useState(() => notificationService.getUnreadCount());
+  const [totalNotifCount, setTotalNotifCount] = useState(() => notificationService.getNotifications().length);
 
   const loadData = async () => {
     const chars = characterRepository.loadCatalog();
@@ -46,6 +50,8 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({
     setTracks(allTracks);
 
     setRecentLogs(auditService.getRecentLogs(8));
+    setUnreadNotifCount(notificationService.getUnreadCount());
+    setTotalNotifCount(notificationService.getNotifications().length);
   };
 
   useEffect(() => {
@@ -55,17 +61,25 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({
     const handleTagsUpdate = () => loadData();
     const handleMusicUpdate = () => loadData();
     const handleAuditUpdate = () => setRecentLogs(auditService.getRecentLogs(8));
+    const handleNotifUpdate = () => {
+      setUnreadNotifCount(notificationService.getUnreadCount());
+      setTotalNotifCount(notificationService.getNotifications().length);
+    };
 
     window.addEventListener('be_ca_catalog_updated', handleCatalogUpdate);
     window.addEventListener('be_ca_tags_updated', handleTagsUpdate);
     window.addEventListener('be_ca_music_updated', handleMusicUpdate);
     window.addEventListener('be_ca_audit_logged', handleAuditUpdate);
+    window.addEventListener('be_ca_admin_notifications_updated', handleNotifUpdate);
+    window.addEventListener('be_ca_character_comments_changed', handleNotifUpdate);
 
     return () => {
       window.removeEventListener('be_ca_catalog_updated', handleCatalogUpdate);
       window.removeEventListener('be_ca_tags_updated', handleTagsUpdate);
       window.removeEventListener('be_ca_music_updated', handleMusicUpdate);
       window.removeEventListener('be_ca_audit_logged', handleAuditUpdate);
+      window.removeEventListener('be_ca_admin_notifications_updated', handleNotifUpdate);
+      window.removeEventListener('be_ca_character_comments_changed', handleNotifUpdate);
     };
   }, []);
 
@@ -97,7 +111,7 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({
       </div>
 
       {/* Main Metric Cards Bento */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {/* Card 1: Characters */}
         <div 
           onClick={() => onNavigate('characters')}
@@ -126,7 +140,41 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({
           </div>
         </div>
 
-        {/* Card 2: Dynamic Tags */}
+        {/* Card 2: Notifications (Admin only) */}
+        <div 
+          onClick={() => onNavigate('notifications')}
+          className={`border rounded-2xl p-5 transition-all cursor-pointer group shadow-sm flex flex-col justify-between ${
+            unreadNotifCount > 0
+              ? 'bg-slate-800/90 border-rose-500/50 hover:border-rose-400 ring-1 ring-rose-500/20'
+              : 'bg-slate-800/80 hover:bg-slate-800 border-slate-700/80 hover:border-cyan-500/50'
+          }`}
+        >
+          <div className="flex items-center justify-between pb-3 border-b border-slate-700/50">
+            <span className="text-xs font-mono uppercase tracking-wider text-rose-400 font-semibold flex items-center gap-1.5">
+              <Bell className="w-4 h-4" />
+              <span>Thông Báo</span>
+            </span>
+            <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-rose-400 group-hover:translate-x-0.5 transition-all" />
+          </div>
+          <div className="py-4">
+            <div className="text-3xl font-bold text-white font-mono flex items-center gap-2">
+              <span>{totalNotifCount}</span>
+              {unreadNotifCount > 0 && (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-rose-500 text-white font-mono font-bold animate-pulse">
+                  +{unreadNotifCount} mới
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-slate-400 mt-1">Thông báo bình luận người dùng</p>
+          </div>
+          <div className="flex items-center gap-3 pt-2 border-t border-slate-700/40 text-[11px] font-mono">
+            <span className={unreadNotifCount > 0 ? "text-rose-400 font-bold" : "text-slate-400"}>
+              {unreadNotifCount} chưa đọc
+            </span>
+          </div>
+        </div>
+
+        {/* Card 3: Dynamic Tags */}
         <div 
           onClick={() => onNavigate('tags')}
           className="bg-slate-800/80 hover:bg-slate-800 border border-slate-700/80 hover:border-cyan-500/50 rounded-2xl p-5 transition-all cursor-pointer group shadow-sm flex flex-col justify-between"
@@ -147,7 +195,7 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({
           </div>
         </div>
 
-        {/* Card 3: Music Tracks */}
+        {/* Card 4: Music Tracks */}
         <div 
           onClick={() => onNavigate('music')}
           className="bg-slate-800/80 hover:bg-slate-800 border border-slate-700/80 hover:border-cyan-500/50 rounded-2xl p-5 transition-all cursor-pointer group shadow-sm flex flex-col justify-between"
@@ -173,7 +221,7 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({
           </div>
         </div>
 
-        {/* Card 4: Users / Access Guard */}
+        {/* Card 5: Users / Access Guard */}
         <div 
           onClick={() => onNavigate('users')}
           className="bg-slate-800/80 hover:bg-slate-800 border border-slate-700/80 hover:border-cyan-500/50 rounded-2xl p-5 transition-all cursor-pointer group shadow-sm flex flex-col justify-between"
@@ -202,6 +250,14 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({
           <span>Thao Tác Quản Trị Nhanh</span>
         </h3>
         <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => onNavigate('notifications')}
+            className="px-3.5 py-2 rounded-xl bg-rose-600/30 hover:bg-rose-600/40 text-rose-200 border border-rose-500/40 text-xs font-medium transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
+          >
+            <Bell className="w-4 h-4 text-rose-300" />
+            <span>Xem Thông Báo {unreadNotifCount > 0 ? `(${unreadNotifCount} mới)` : ''}</span>
+          </button>
           <button
             type="button"
             onClick={onOpenAddCharacter}

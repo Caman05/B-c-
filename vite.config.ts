@@ -8,6 +8,7 @@ import {defineConfig, Plugin} from 'vite';
 // Server-side secret for signing authentication tokens
 const SERVER_AUTH_SECRET = process.env.SESSION_SECRET || 'be_ca_aquarium_ocean_secret_key_2026';
 const COMMENTS_FILE = path.join(process.cwd(), 'public', 'storage', 'data', 'comments.json');
+const NOTIFICATIONS_FILE = path.join(process.cwd(), 'public', 'storage', 'data', 'notifications.json');
 
 function signUserToken(payload: { userId: string; role: 'admin' | 'member'; email?: string; name?: string; avatarUrl?: string }): string {
   const data = {
@@ -64,6 +65,33 @@ function writeCommentsDb(data: Record<string, any[]>): void {
     fs.renameSync(tmpFile, COMMENTS_FILE);
   } catch (err) {
     console.error('[API] Error writing comments database:', err);
+  }
+}
+
+function readNotificationsDb(): any[] {
+  try {
+    if (!fs.existsSync(NOTIFICATIONS_FILE)) {
+      return [];
+    }
+    const raw = fs.readFileSync(NOTIFICATIONS_FILE, 'utf-8');
+    return JSON.parse(raw) || [];
+  } catch (err) {
+    console.error('[API] Error reading notifications database:', err);
+    return [];
+  }
+}
+
+function writeNotificationsDb(data: any[]): void {
+  try {
+    const dir = path.dirname(NOTIFICATIONS_FILE);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    const tmpFile = `${NOTIFICATIONS_FILE}.${Date.now()}.tmp`;
+    fs.writeFileSync(tmpFile, JSON.stringify(data, null, 2), 'utf-8');
+    fs.renameSync(tmpFile, NOTIFICATIONS_FILE);
+  } catch (err) {
+    console.error('[API] Error writing notifications database:', err);
   }
 }
 
@@ -359,6 +387,36 @@ function storageDevPlugin(): Plugin {
             db[characterId].push(newComment);
             writeCommentsDb(db);
 
+            // Automatically record notification for Admin
+            try {
+              const notifs = readNotificationsDb();
+              const charName = (body.characterName || '').trim() || 'Nhân vật';
+              const charAvatar = (body.characterAvatar || '').trim();
+              const newNotif = {
+                id: 'notif-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9),
+                type: 'comment',
+                title: 'Bình luận mới về nhân vật',
+                message: `${newComment.authorName} đã bình luận về "${charName}": "${content.slice(0, 90)}${content.length > 90 ? '...' : ''}"`,
+                characterId,
+                characterName: charName,
+                characterAvatar: charAvatar,
+                commentId: newComment.id,
+                userId: authUser.userId,
+                authorName: newComment.authorName,
+                authorEmail: newComment.authorEmail,
+                authorRole: newComment.authorRole,
+                authorAvatar: newComment.authorAvatar,
+                content,
+                createdAt: newComment.createdAt,
+                isRead: false,
+              };
+              notifs.unshift(newNotif);
+              if (notifs.length > 200) notifs.length = 200;
+              writeNotificationsDb(notifs);
+            } catch (notifErr) {
+              console.error('[API] Error recording admin comment notification:', notifErr);
+            }
+
             res.statusCode = 201;
             res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify({ success: true, comment: newComment }));
@@ -456,6 +514,117 @@ function storageDevPlugin(): Plugin {
             message: 'Đã xóa bình luận.',
             deletedCommentId: targetCommentId,
           }));
+          return;
+        }
+
+        next();
+      });
+
+      // 6. Handle Notifications API: Strictly visible & manageable ONLY by Admin
+      server.middlewares.use(async (req, res, next) => {
+        if (!req.url || !req.url.startsWith('/api/notifications')) {
+          next();
+          return;
+        }
+
+        const authHeader = req.headers['authorization'];
+        const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+        const authUser = token ? verifyUserToken(token) : null;
+
+        // Strict Admin Protection: Only authenticated Admins can query or manage notifications
+        if (!authUser || authUser.role !== 'admin') {
+          res.statusCode = 403;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({
+            success: false,
+            error: 'Quyền truy cập bị từ chối: Mục thông báo chỉ dành riêng cho Admin.',
+          }));
+          return;
+        }
+
+        const urlObj = new URL(req.url, 'http://localhost:3000');
+        const pathParts = urlObj.pathname.split('/').filter(Boolean);
+        // pathParts: ['api', 'notifications'] or ['api', 'notifications', ':id'] or ['api', 'notifications', ':id', 'read']
+        const notifIdFromPath = pathParts.length > 2 ? pathParts[2] : null;
+        const subAction = pathParts.length > 3 ? pathParts[3] : null;
+
+        // GET: Fetch all notifications (for Admin only)
+        if (req.method === 'GET') {
+          const notifs = readNotificationsDb();
+          // Sort newest first
+          notifs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ success: true, notifications: notifs }));
+          return;
+        }
+
+        // PATCH or PUT or POST (with read/mark-all): Mark notification(s) as read
+        if (req.method === 'PATCH' || (req.method === 'POST' && (subAction === 'read' || notifIdFromPath === 'mark-all-read'))) {
+          let notifs = readNotificationsDb();
+          const targetId = notifIdFromPath;
+
+          if (targetId === 'all' || targetId === 'mark-all-read' || subAction === 'mark-all-read') {
+            notifs = notifs.map((n) => ({ ...n, isRead: true }));
+          } else if (targetId) {
+            notifs = notifs.map((n) => (n.id === targetId ? { ...n, isRead: true } : n));
+          }
+
+          writeNotificationsDb(notifs);
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ success: true, message: 'Đã cập nhật trạng thái thông báo.' }));
+          return;
+        }
+
+        // DELETE: Delete single notification or clear all
+        if (req.method === 'DELETE') {
+          let notifs = readNotificationsDb();
+          const targetId = notifIdFromPath || urlObj.searchParams.get('id');
+
+          if (targetId === 'all' || targetId === 'clear-all') {
+            notifs = [];
+          } else if (targetId) {
+            notifs = notifs.filter((n) => n.id !== targetId);
+          }
+
+          writeNotificationsDb(notifs);
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ success: true, message: 'Đã xóa thông báo.' }));
+          return;
+        }
+
+        // POST: Manually create a notification (Admin test / injection)
+        if (req.method === 'POST') {
+          try {
+            const body = await parseJsonBody(req);
+            const notifs = readNotificationsDb();
+            const newNotif = {
+              id: 'notif-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9),
+              type: body.type || 'comment',
+              title: body.title || 'Thông báo mới',
+              message: body.message || '',
+              characterId: body.characterId || '',
+              characterName: body.characterName || '',
+              characterAvatar: body.characterAvatar || '',
+              commentId: body.commentId || '',
+              userId: body.userId || authUser.userId,
+              authorName: body.authorName || 'Người dùng',
+              authorEmail: body.authorEmail || '',
+              authorRole: body.authorRole || 'member',
+              authorAvatar: body.authorAvatar || '',
+              content: body.content || '',
+              createdAt: new Date().toISOString(),
+              isRead: false,
+            };
+            notifs.unshift(newNotif);
+            writeNotificationsDb(notifs);
+            res.statusCode = 201;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ success: true, notification: newNotif }));
+          } catch (err: any) {
+            res.statusCode = 400;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ success: false, error: err.message }));
+          }
           return;
         }
 

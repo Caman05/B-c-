@@ -16,13 +16,15 @@ import {
   ArrowRight,
   ShieldCheck,
   AtSign,
-  Loader2
+  Loader2,
+  Bell
 } from 'lucide-react';
+import { notificationService } from '../services/notificationService';
 
 interface ProfileProps {
   characters?: Character[];
   onNavigate?: (page: PageView) => void;
-  onNavigateToAdmin?: () => void;
+  onNavigateToAdmin?: (view?: string) => void;
   onLogout?: () => void;
 }
 
@@ -33,6 +35,7 @@ export const Profile: React.FC<ProfileProps> = ({
   const [isAdmin, setIsAdmin] = useState(() => authService.isAdmin());
   const [profile, setProfile] = useState<AuthProfile>(() => authService.getCurrentUser());
   const [isTestMode, setIsTestMode] = useState(() => authService.isTestMemberMode());
+  const [unreadNotifCount, setUnreadNotifCount] = useState(() => notificationService.getUnreadCount());
 
   // Listen for admin role updates and user changes
   useEffect(() => {
@@ -40,18 +43,28 @@ export const Profile: React.FC<ProfileProps> = ({
       setIsAdmin(authService.isAdmin());
       setProfile(authService.getCurrentUser());
       setIsTestMode(authService.isTestMemberMode());
+      setUnreadNotifCount(notificationService.getUnreadCount());
     };
+    const handleNotifUpdate = () => {
+      setUnreadNotifCount(notificationService.getUnreadCount());
+    };
+
     window.addEventListener('be_ca_auth_role_changed', handleRoleUpdate);
     window.addEventListener('be_ca_admin_role_changed', handleRoleUpdate);
     window.addEventListener('be_ca_user_switched', handleRoleUpdate);
     window.addEventListener('be_ca_profiles_updated', handleRoleUpdate);
     window.addEventListener('be_ca_test_mode_changed', handleRoleUpdate);
+    window.addEventListener('be_ca_admin_notifications_updated', handleNotifUpdate);
+    window.addEventListener('be_ca_character_comments_changed', handleNotifUpdate);
+
     return () => {
       window.removeEventListener('be_ca_auth_role_changed', handleRoleUpdate);
       window.removeEventListener('be_ca_admin_role_changed', handleRoleUpdate);
       window.removeEventListener('be_ca_user_switched', handleRoleUpdate);
       window.removeEventListener('be_ca_profiles_updated', handleRoleUpdate);
       window.removeEventListener('be_ca_test_mode_changed', handleRoleUpdate);
+      window.removeEventListener('be_ca_admin_notifications_updated', handleNotifUpdate);
+      window.removeEventListener('be_ca_character_comments_changed', handleNotifUpdate);
     };
   }, []);
 
@@ -383,16 +396,33 @@ export const Profile: React.FC<ProfileProps> = ({
             </div>
           </div>
 
-          <button
-            id="profile-goto-admin-btn"
-            type="button"
-            onClick={onNavigateToAdmin}
-            className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-teal-400 to-cyan-400 hover:from-teal-300 hover:to-cyan-300 text-slate-950 font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2 flex-shrink-0 cursor-pointer"
-          >
-            <Sparkles className="w-4 h-4 text-slate-900" />
-            <span>Vào Admin Dashboard (/admin)</span>
-            <ArrowRight className="w-3.5 h-3.5 text-slate-900" />
-          </button>
+          <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full sm:w-auto">
+            <button
+              id="profile-goto-notifications-btn"
+              type="button"
+              onClick={() => onNavigateToAdmin('notifications')}
+              className="w-full sm:w-auto px-3.5 py-2.5 rounded-xl bg-slate-900/80 hover:bg-slate-900 text-rose-300 border border-rose-500/40 font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2 flex-shrink-0 cursor-pointer"
+            >
+              <Bell className="w-4 h-4 text-rose-400" />
+              <span>Thông Báo</span>
+              {unreadNotifCount > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[10px] font-mono animate-pulse">
+                  {unreadNotifCount}
+                </span>
+              )}
+            </button>
+
+            <button
+              id="profile-goto-admin-btn"
+              type="button"
+              onClick={() => onNavigateToAdmin()}
+              className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-teal-400 to-cyan-400 hover:from-teal-300 hover:to-cyan-300 text-slate-950 font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2 flex-shrink-0 cursor-pointer"
+            >
+              <Sparkles className="w-4 h-4 text-slate-900" />
+              <span>Vào Admin Dashboard (/admin)</span>
+              <ArrowRight className="w-3.5 h-3.5 text-slate-900" />
+            </button>
+          </div>
         </div>
       )}
 

@@ -126,7 +126,27 @@ export type AdminView =
   | 'tags'
   | 'music'
   | 'unlocks'
-  | 'users';
+  | 'users'
+  | 'notifications';
+
+export interface AdminNotification {
+  id: string;
+  type: 'comment';
+  title: string;
+  message: string;
+  characterId: string;
+  characterName?: string;
+  characterAvatar?: string;
+  commentId: string;
+  userId: string;
+  authorName: string;
+  authorEmail?: string;
+  authorRole?: 'admin' | 'member';
+  authorAvatar?: string;
+  content: string;
+  createdAt: string;
+  isRead: boolean;
+}
 
 export interface CharacterCreateInput {
   name: string;

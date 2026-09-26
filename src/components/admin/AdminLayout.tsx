@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AdminView } from '../../types';
 import { userCharacterRepository } from '../../services/userCharacterRepository';
+import { notificationService } from '../../services/notificationService';
 import { 
   ArrowLeft, 
   LayoutDashboard, 
@@ -11,7 +12,8 @@ import {
   Users, 
   ShieldCheck, 
   Sparkles,
-  ExternalLink
+  ExternalLink,
+  Bell
 } from 'lucide-react';
 
 interface AdminLayoutProps {
@@ -28,21 +30,40 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   children,
 }) => {
   const [activeUserId, setActiveUserId] = useState(() => userCharacterRepository.getCurrentUserId());
+  const [unreadNotifCount, setUnreadNotifCount] = useState(() => notificationService.getUnreadCount());
 
   useEffect(() => {
     const handleSwitch = () => {
       setActiveUserId(userCharacterRepository.getCurrentUserId());
     };
+    const handleNotifUpdate = () => {
+      setUnreadNotifCount(notificationService.getUnreadCount());
+    };
+
     window.addEventListener('be_ca_user_switched', handleSwitch);
-    return () => window.removeEventListener('be_ca_user_switched', handleSwitch);
+    window.addEventListener('be_ca_admin_notifications_updated', handleNotifUpdate);
+    window.addEventListener('be_ca_character_comments_changed', handleNotifUpdate);
+
+    return () => {
+      window.removeEventListener('be_ca_user_switched', handleSwitch);
+      window.removeEventListener('be_ca_admin_notifications_updated', handleNotifUpdate);
+      window.removeEventListener('be_ca_character_comments_changed', handleNotifUpdate);
+    };
   }, []);
 
-  const navItems: { id: AdminView; label: string; icon: React.ReactNode; emoji: string }[] = [
+  const navItems: { id: AdminView; label: string; icon: React.ReactNode; emoji: string; badge?: number }[] = [
     {
       id: 'overview',
       label: 'Tổng Quan',
       emoji: '📊',
       icon: <LayoutDashboard className="w-4 h-4" />,
+    },
+    {
+      id: 'notifications',
+      label: 'Thông Báo',
+      emoji: '🔔',
+      icon: <Bell className="w-4 h-4" />,
+      badge: unreadNotifCount,
     },
     {
       id: 'characters',
@@ -150,6 +171,13 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
               >
                 <span>{item.emoji}</span>
                 <span>{item.label}</span>
+                {item.badge !== undefined && item.badge > 0 && (
+                  <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full font-bold ml-1 ${
+                    isActive ? 'bg-white text-cyan-900' : 'bg-rose-500 text-white animate-pulse'
+                  }`}>
+                    {item.badge}
+                  </span>
+                )}
               </button>
             );
           })}

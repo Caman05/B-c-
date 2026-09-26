@@ -2,85 +2,95 @@ import { Track } from '../types';
 import { authService } from './authService';
 import { getSupabase, isSupabaseConfigured, getSupabasePublicUrl } from '../lib/supabaseClient';
 
-const STORAGE_KEY_MUSIC = 'be_ca_music_tracks_v2';
+export const PLAYLIST_VERSION = 4;
+export const STORAGE_KEY_PLAYLIST_VERSION = 'be_ca_playlist_version';
+export const STORAGE_KEY_MUSIC = 'be_ca_playlist_v2';
+const LEGACY_STORAGE_KEYS = [
+  'be_ca_music_tracks',
+  'be_ca_music_tracks_v1',
+  'be_ca_music_tracks_v2',
+  'be_ca_playlist_v1',
+  'be_ca_playlist_v3',
+  'be_ca_playlist_v4',
+];
 const STORAGE_KEY_ADMIN = 'be_ca_admin_role';
 
-// Initial dynamic music tracks (Clean, peaceful ocean ambience)
-const DEFAULT_TRACKS: Track[] = [
+// Updated default playlist with 5 tracks
+export const DEFAULT_TRACKS: Track[] = [
   {
-    id: 'track-1',
-    title: 'Biển Lặng',
-    artist: 'Hải Lưu Phong',
+    id: 'track-wo-ai-ni',
+    title: 'Wo ai ni',
+    artist: 'Trash Dee',
     coverUrl: '',
-    audioUrl: '/audio/wo-ai-ni.mp3',
-    audioPath: undefined,
-    storageBucket: 'music',
-    isActive: true,
-    duration: 194,
-    rootFreq: 220,
-    sortOrder: 1,
-    createdAt: '2026-01-10T10:00:00.000Z',
-    updatedAt: '2026-01-10T10:00:00.000Z',
-  },
-  {
-    id: 'track-2',
-    title: 'Đêm Sâu Dưới Nước',
-    artist: 'Thủy Ngân',
-    coverUrl: '',
-    audioUrl: 'synth:196',
-    audioPath: undefined,
-    storageBucket: 'music',
-    isActive: true,
-    duration: 218,
-    rootFreq: 196,
-    sortOrder: 2,
-    createdAt: '2026-01-15T12:30:00.000Z',
-    updatedAt: '2026-01-15T12:30:00.000Z',
-  },
-  {
-    id: 'track-3',
-    title: 'Ánh Sáng San Hô',
-    artist: 'Ngọc Trai',
-    coverUrl: '',
-    audioUrl: 'synth:261.63',
-    audioPath: undefined,
-    storageBucket: 'music',
-    isActive: true,
-    duration: 175,
-    rootFreq: 261.63,
-    sortOrder: 3,
-    createdAt: '2026-01-20T14:45:00.000Z',
-    updatedAt: '2026-01-20T14:45:00.000Z',
-  },
-  {
-    id: 'track-4',
-    title: 'Mặt Nước Phẳng Lặng',
-    artist: '',
-    coverUrl: '',
-    audioUrl: 'synth:246.94',
-    audioPath: undefined,
-    storageBucket: 'music',
-    isActive: true,
-    duration: 186,
-    rootFreq: 246.94,
-    sortOrder: 4,
-    createdAt: '2026-01-25T09:15:00.000Z',
-    updatedAt: '2026-01-25T09:15:00.000Z',
-  },
-  {
-    id: 'track-5',
-    title: 'Sóng Vỗ Êm Dịu (Bản MP3)',
-    artist: 'BỂ CÁ Audio',
-    coverUrl: '',
-    audioUrl: '/audio/test_ocean.mp3',
-    audioPath: 'music/audio/test_ocean.mp3',
+    audioUrl: 'https://files.catbox.moe/vwb48m.mp3',
     storageBucket: 'music',
     contentType: 'audio/mpeg',
     isActive: true,
-    duration: 120,
+    duration: 180,
+    rootFreq: 220,
+    sortOrder: 1,
+    createdAt: '2026-03-01T00:00:00.000Z',
+    updatedAt: '2026-03-01T00:00:00.000Z',
+  },
+  {
+    id: 'track-hon-anh-di',
+    title: 'hôn anh đi',
+    artist: 'Hoāng',
+    coverUrl: '',
+    audioUrl: 'https://files.catbox.moe/hzw36f.mp3',
+    storageBucket: 'music',
+    contentType: 'audio/mpeg',
+    isActive: true,
+    duration: 180,
+    rootFreq: 220,
+    sortOrder: 2,
+    createdAt: '2026-03-01T00:00:00.000Z',
+    updatedAt: '2026-03-01T00:00:00.000Z',
+  },
+  {
+    id: 'track-parachute',
+    title: 'PARACHUTE',
+    artist: 'Parys, IVY',
+    coverUrl: '',
+    audioUrl: 'https://files.catbox.moe/pg2a2g.mp3',
+    storageBucket: 'music',
+    contentType: 'audio/mpeg',
+    isActive: true,
+    duration: 180,
+    rootFreq: 220,
+    sortOrder: 3,
+    createdAt: '2026-03-01T00:00:00.000Z',
+    updatedAt: '2026-03-01T00:00:00.000Z',
+  },
+  {
+    id: 'track-phong',
+    title: 'PHONG',
+    artist: 'VSTRA (ft TGSN, Tyronee)',
+    coverUrl: '',
+    audioUrl: 'https://files.catbox.moe/u580ta.mp3',
+    storageBucket: 'music',
+    contentType: 'audio/mpeg',
+    isActive: true,
+    duration: 180,
+    rootFreq: 220,
+    sortOrder: 4,
+    createdAt: '2026-03-01T00:00:00.000Z',
+    updatedAt: '2026-03-01T00:00:00.000Z',
+  },
+  {
+    id: 'track-nam-ben-anh',
+    title: 'Nằm bên anh',
+    artist: 'ZLAB, Châu Bùi, buitruonglinh',
+    coverUrl: '',
+    audioUrl: 'https://files.catbox.moe/659yuh.mp3',
+    storageBucket: 'music',
+    contentType: 'audio/mpeg',
+    isActive: true,
+    duration: 180,
+    rootFreq: 220,
     sortOrder: 5,
-    createdAt: '2026-02-01T08:00:00.000Z',
-    updatedAt: '2026-02-01T08:00:00.000Z',
+    createdAt: '2026-03-01T00:00:00.000Z',
+    updatedAt: '2026-03-01T00:00:00.000Z',
   },
 ];
 
@@ -170,15 +180,37 @@ class MusicService {
   }
 
   /**
-   * Load tracks from local cache/storage, identifying legacy blob tracks
+   * Load tracks from local cache/storage, identifying legacy blob tracks.
+   * Auto-overwrites if count does not match new DEFAULT_TRACKS (5 tracks),
+   * or if version is outdated, or if legacy invalid URLs are found.
    */
   private loadLocalTracks(): Track[] {
     try {
+      // 1. Purge legacy storage keys to clean old cache on user devices
+      LEGACY_STORAGE_KEYS.forEach((key) => {
+        try {
+          if (key !== STORAGE_KEY_MUSIC) {
+            localStorage.removeItem(key);
+          }
+        } catch {
+          // ignore
+        }
+      });
+
       const raw = localStorage.getItem(STORAGE_KEY_MUSIC);
+      const storedVersion = parseInt(localStorage.getItem(STORAGE_KEY_PLAYLIST_VERSION) || '0', 10);
+
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          // Identify any legacy blob tracks and normalize sortOrder
+        // Requirement: "Nếu tìm thấy danh sách cũ trong máy người dùng không khớp số lượng bài mới, tự động ghi đè danh sách mới vào để playlist trên điện thoại/máy tính của mọi người luôn hiện danh sách mới toanh này."
+        const isCountMismatch = !Array.isArray(parsed) || parsed.length !== DEFAULT_TRACKS.length;
+        const isOutdatedVersion = storedVersion < PLAYLIST_VERSION;
+        const hasLegacyAudioUrl = Array.isArray(parsed) && parsed.some(
+          (t: Track) => !t.audioUrl || t.audioUrl.startsWith('/audio/') || t.audioUrl.startsWith('blob:')
+        );
+
+        if (!isCountMismatch && !isOutdatedVersion && !hasLegacyAudioUrl) {
+          // Normalize sortOrder
           const list = parsed.map((t: Track, idx: number) => {
             const item: Track = {
               ...t,
@@ -198,7 +230,9 @@ class MusicService {
     } catch (e) {
       console.warn('Failed to parse music tracks from storage:', e);
     }
-    // Initialize defaults if empty
+
+    // Auto-overwrite with new pristine DEFAULT_TRACKS when count mismatches or cache is outdated
+    localStorage.setItem(STORAGE_KEY_PLAYLIST_VERSION, String(PLAYLIST_VERSION));
     this.saveLocalTracks(DEFAULT_TRACKS, false);
     return DEFAULT_TRACKS;
   }
@@ -211,12 +245,22 @@ class MusicService {
       // Keep tracks ordered by sortOrder
       const sorted = [...tracks].sort((a, b) => (a.sortOrder ?? 999999) - (b.sortOrder ?? 999999));
       localStorage.setItem(STORAGE_KEY_MUSIC, JSON.stringify(sorted));
+      localStorage.setItem(STORAGE_KEY_PLAYLIST_VERSION, String(PLAYLIST_VERSION));
       if (dispatchEvent) {
         window.dispatchEvent(new CustomEvent('be_ca_music_updated'));
       }
     } catch (e) {
       console.error('Failed to save music tracks to localStorage:', e);
     }
+  }
+
+  /**
+   * Reset local playlist to pristine DEFAULT_TRACKS
+   */
+  public resetToDefaults(): Track[] {
+    localStorage.setItem(STORAGE_KEY_PLAYLIST_VERSION, String(PLAYLIST_VERSION));
+    this.saveLocalTracks(DEFAULT_TRACKS, true);
+    return DEFAULT_TRACKS;
   }
 
   /**

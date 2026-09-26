@@ -12,13 +12,15 @@ import {
   Shield,
   Moon,
   Sun,
-  Music
+  Music,
+  Bell
 } from 'lucide-react';
+import { notificationService } from '../services/notificationService';
 
 interface NavigationProps {
   currentPage: PageView;
   onPageChange: (page: PageView) => void;
-  onNavigateToAdmin?: () => void;
+  onNavigateToAdmin?: (view?: string) => void;
   unlockedCount: number;
   totalCount: number;
   favoritesCount: number;
@@ -39,21 +41,32 @@ export const Navigation: React.FC<NavigationProps> = ({
   onToggleAudio,
 }) => {
   const [isAdmin, setIsAdmin] = useState(() => musicService.isAdminUser());
+  const [unreadNotifCount, setUnreadNotifCount] = useState(() => notificationService.getUnreadCount());
   const { isDark, toggleTheme } = useTheme();
 
   useEffect(() => {
     const handleRoleCheck = () => {
       setIsAdmin(musicService.isAdminUser());
+      setUnreadNotifCount(notificationService.getUnreadCount());
     };
+    const handleNotifUpdate = () => {
+      setUnreadNotifCount(notificationService.getUnreadCount());
+    };
+
     window.addEventListener('be_ca_admin_role_changed', handleRoleCheck);
     window.addEventListener('be_ca_auth_role_changed', handleRoleCheck);
     window.addEventListener('be_ca_user_switched', handleRoleCheck);
     window.addEventListener('be_ca_test_mode_changed', handleRoleCheck);
+    window.addEventListener('be_ca_admin_notifications_updated', handleNotifUpdate);
+    window.addEventListener('be_ca_character_comments_changed', handleNotifUpdate);
+
     return () => {
       window.removeEventListener('be_ca_admin_role_changed', handleRoleCheck);
       window.removeEventListener('be_ca_auth_role_changed', handleRoleCheck);
       window.removeEventListener('be_ca_user_switched', handleRoleCheck);
       window.removeEventListener('be_ca_test_mode_changed', handleRoleCheck);
+      window.removeEventListener('be_ca_admin_notifications_updated', handleNotifUpdate);
+      window.removeEventListener('be_ca_character_comments_changed', handleNotifUpdate);
     };
   }, []);
   const navItems: { id: PageView; label: string; icon: React.ReactNode; badge?: number; iconEmoji: string }[] = [
@@ -164,12 +177,12 @@ export const Navigation: React.FC<NavigationProps> = ({
             })}
           </nav>
 
-          {/* Admin Dashboard Entry (Visible ONLY to Admin) */}
+          {/* Admin Dashboard Entry & Notifications (Visible ONLY to Admin) */}
           {isAdmin && onNavigateToAdmin && (
-            <div className="pt-2">
+            <div className="pt-2 space-y-1.5">
               <button
                 id="sidebar-admin-link"
-                onClick={onNavigateToAdmin}
+                onClick={() => onNavigateToAdmin()}
                 className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl bg-gradient-to-r from-slate-900 to-cyan-950 text-white hover:from-slate-800 hover:to-cyan-900 transition-all border border-cyan-500/40 shadow-xs cursor-pointer group"
               >
                 <span className="flex items-center gap-2">
@@ -179,6 +192,24 @@ export const Navigation: React.FC<NavigationProps> = ({
                 <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-400/30">
                   /admin
                 </span>
+              </button>
+
+              <button
+                id="sidebar-notifications-link"
+                onClick={() => onNavigateToAdmin('notifications')}
+                className="w-full flex items-center justify-between px-3.5 py-2 rounded-xl bg-slate-900/40 hover:bg-slate-900/80 text-slate-300 hover:text-white transition-all border border-slate-700/60 text-xs cursor-pointer group"
+              >
+                <span className="flex items-center gap-2">
+                  <Bell className="w-3.5 h-3.5 text-rose-400 group-hover:scale-110 transition-transform" />
+                  <span className="font-medium text-slate-200">Thông báo bình luận</span>
+                </span>
+                {unreadNotifCount > 0 ? (
+                  <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-full bg-rose-500 text-white animate-pulse">
+                    {unreadNotifCount}
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-mono text-slate-500">0</span>
+                )}
               </button>
             </div>
           )}
@@ -232,8 +263,27 @@ export const Navigation: React.FC<NavigationProps> = ({
           </span>
         </div>
 
-        {/* Right Action Buttons: [ 🎵 ] [ 🌙 / ☀️ ] [ 👤 ] */}
+        {/* Right Action Buttons: [ 🔔 (Admin Only) ] [ 🎵 ] [ 🌙 / ☀️ ] [ 👤 ] */}
         <div className="flex items-center gap-2">
+          {/* Nút Thông Báo Admin [ 🔔 ] (CHỈ HIỂN THỊ VỚI ADMIN) */}
+          {isAdmin && (
+            <button
+              id="topbar-admin-notifications-btn"
+              type="button"
+              onClick={() => onNavigateToAdmin?.('notifications')}
+              className="relative p-2 rounded-xl bg-white/80 dark:bg-[#12283f] border border-slate-200 dark:border-slate-700 text-rose-600 dark:text-rose-400 hover:bg-white dark:hover:bg-[#193654] shadow-2xs cursor-pointer active:scale-95 transition-all"
+              aria-label="Thông báo quản trị (Admin)"
+              title={`Thông báo bình luận mới (Admin)${unreadNotifCount > 0 ? ` - ${unreadNotifCount} chưa đọc` : ''}`}
+            >
+              <Bell className="w-4 h-4" />
+              {unreadNotifCount > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-4 min-w-4 px-1 items-center justify-center rounded-full bg-rose-500 text-white text-[9px] font-mono font-bold shadow-xs animate-pulse">
+                  {unreadNotifCount > 99 ? '99+' : unreadNotifCount}
+                </span>
+              )}
+            </button>
+          )}
+
           {/* Nút Âm nhạc [ 🎵 ] */}
           <button
             id="topbar-music-btn"

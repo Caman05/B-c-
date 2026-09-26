@@ -1,6 +1,8 @@
 import { CharacterComment } from '../types';
 import { authService } from './authService';
 import { isSupabaseConfigured, getSupabase } from '../lib/supabaseClient';
+import { characterRepository } from './characterRepository';
+import { notificationService } from './notificationService';
 
 const STORAGE_KEY_COMMENTS = 'be_ca_character_comments_v1';
 
@@ -221,12 +223,28 @@ class CommentService {
     const currentUser = authService.getCurrentUser();
     const headers = await authService.getAuthHeaders();
 
+    // Find character metadata for notification context
+    let characterName = 'Nhân vật';
+    let characterAvatar = '';
+    try {
+      const catalog = characterRepository.loadCatalog();
+      const matched = catalog.find((c) => c.id === characterId);
+      if (matched) {
+        characterName = matched.name;
+        characterAvatar = matched.avatar || matched.avatarUrl || '';
+      }
+    } catch {
+      // fallback
+    }
+
     // 1. Post to Backend API
     const res = await fetch('/api/comments', {
       method: 'POST',
       headers,
       body: JSON.stringify({
         characterId,
+        characterName,
+        characterAvatar,
         content: trimmed,
       }),
     });
@@ -238,6 +256,25 @@ class CommentService {
     }
 
     const newComment: CharacterComment = data.comment;
+
+    // Record local notification for Admin
+    try {
+      notificationService.recordCommentNotification({
+        characterId,
+        characterName,
+        characterAvatar,
+        commentId: newComment.id,
+        userId: newComment.userId,
+        authorName: newComment.authorName,
+        authorEmail: newComment.authorEmail,
+        authorRole: newComment.authorRole,
+        authorAvatar: newComment.authorAvatar,
+        content: newComment.content,
+        createdAt: newComment.createdAt,
+      });
+    } catch (notifErr) {
+      console.warn('[CommentService] Notification recording error:', notifErr);
+    }
 
     // 2. Sync to Supabase if configured
     if (isSupabaseConfigured()) {

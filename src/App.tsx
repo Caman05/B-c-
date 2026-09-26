@@ -60,12 +60,13 @@ export default function App() {
     };
   }, []);
 
-  const handleNavigateToAdmin = () => {
+  const handleNavigateToAdmin = (initialView?: string) => {
     setIsAdminRoute(true);
+    const targetUrl = initialView ? `/admin?view=${encodeURIComponent(initialView)}` : '/admin';
     try {
-      window.history.pushState(null, '', '/admin');
+      window.history.pushState(null, '', targetUrl);
     } catch {
-      window.location.hash = '#admin';
+      window.location.hash = initialView ? `#admin-${initialView}` : '#admin';
     }
   };
 
