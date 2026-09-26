@@ -158,6 +158,9 @@ export interface CharacterCreateInput {
   description: string;
   characterLink?: string;
   tags?: string[];
+  role?: string;
+  age?: number | string;
+  appearance?: string;
   isLocked: boolean;
   isHidden?: boolean;
   unlockType: UnlockType;
@@ -174,6 +177,9 @@ export interface CharacterUpdateInput {
   description?: string;
   characterLink?: string;
   tags?: string[];
+  role?: string;
+  age?: number | string;
+  appearance?: string;
   isLocked?: boolean;
   isHidden?: boolean;
   unlockType?: UnlockType;

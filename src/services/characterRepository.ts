@@ -166,11 +166,189 @@ class CharacterRepository {
     }
   }
 
+  private realtimeChannel: any = null;
+
   /**
-   * Get all characters in catalog (syncs with /api/characters and Supabase if configured)
+   * Helper to map a Supabase database row to a canonical Character object
+   */
+  public mapSupabaseRowToCharacter(row: any): Character {
+    const cleanAvatar = resolveCharacterImageUrl(row.avatar || row.avatar_url);
+    return {
+      id: String(row.id),
+      name: row.name,
+      role: row.role || undefined,
+      age: row.age !== null && row.age !== undefined ? Number(row.age) : undefined,
+      appearance: row.appearance || undefined,
+      avatar: cleanAvatar,
+      avatarUrl: cleanAvatar,
+      shortDescription: row.short_description || row.shortDescription || (row.description ? row.description.slice(0, 75) : ''),
+      description: row.description || '',
+      characterLink: row.character_link || row.characterLink || undefined,
+      isLocked: Boolean(row.is_locked ?? row.isLocked),
+      locked: Boolean(row.is_locked ?? row.isLocked),
+      isHidden: Boolean(row.is_hidden ?? row.isHidden),
+      unlockType: row.unlock_type || row.unlockType || 'none',
+      unlockCondition: row.unlock_condition || row.unlockCondition || undefined,
+      quote: row.quote || undefined,
+      lore: row.lore || undefined,
+      tags: Array.isArray(row.tags) ? row.tags : [],
+      isFavorite: false,
+      favorite: false,
+      isPet: false,
+      pet: false,
+      createdAt: row.created_at || row.createdAt || new Date().toISOString(),
+      updatedAt: row.updated_at || row.updatedAt || new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Seeds initial default characters onto Supabase if characters table is empty
+   */
+  public async seedInitialSupabaseCharacters(supabase: any): Promise<Character[]> {
+    console.log('[CharacterRepository] Supabase characters table is empty. Seeding initial characters...');
+    const now = new Date().toISOString();
+    const rowsToInsert = INITIAL_CHARACTERS.map((char) => ({
+      id: char.id,
+      name: char.name,
+      role: char.role || null,
+      age: char.age ? Number(char.age) : null,
+      appearance: char.appearance || null,
+      avatar: char.avatar,
+      avatar_url: char.avatarUrl || char.avatar,
+      short_description: char.shortDescription || '',
+      description: char.description || '',
+      character_link: char.characterLink || null,
+      is_locked: Boolean(char.isLocked),
+      is_hidden: Boolean(char.isHidden),
+      unlock_type: char.unlockType || 'none',
+      unlock_condition: char.unlockCondition || null,
+      quote: char.quote || null,
+      tags: Array.isArray(char.tags) ? char.tags : [],
+      created_at: char.createdAt || now,
+      updated_at: char.updatedAt || now,
+    }));
+
+    try {
+      const { error } = await supabase.from('characters').insert(rowsToInsert);
+      if (error) {
+        console.warn('[CharacterRepository] Seeding with full columns warning:', error.message);
+        // Fallback with standard basic columns if table schema lacks role/age/appearance
+        const basicRows = rowsToInsert.map(({ role, age, appearance, ...rest }) => rest);
+        const res2 = await supabase.from('characters').insert(basicRows);
+        if (res2.error) {
+          console.warn('[CharacterRepository] Seeding basic columns warning:', res2.error.message);
+        }
+      }
+    } catch (e) {
+      console.warn('[CharacterRepository] Seeding network error:', e);
+    }
+
+    return INITIAL_CHARACTERS;
+  }
+
+  /**
+   * Initialize Supabase Realtime subscription on characters table
+   * Keeps all users and browsers instantly in sync when Admin makes changes
+   */
+  public initSupabaseRealtime(client?: any): void {
+    if (this.realtimeChannel) return;
+    const supabase = client || (isSupabaseConfigured() ? getSupabase() : null);
+    if (!supabase) return;
+
+    try {
+      this.realtimeChannel = supabase
+        .channel('public:characters_realtime_sync')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'characters' },
+          async (payload: any) => {
+            console.log('[CharacterRepository] Realtime change detected on characters:', payload.eventType);
+            try {
+              const { data, error } = await supabase
+                .from('characters')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+              if (!error && Array.isArray(data)) {
+                const mapped: Character[] = data.map((row: any) => this.mapSupabaseRowToCharacter(row));
+                const merged = this.mergeWithDefaults(mapped);
+                this.saveCatalog(merged, true);
+              }
+            } catch (err) {
+              console.warn('[CharacterRepository] Realtime refresh error:', err);
+            }
+          }
+        )
+        .subscribe();
+    } catch (err) {
+      console.warn('[CharacterRepository] Realtime channel setup warning:', err);
+    }
+  }
+
+  /**
+   * Get all characters in catalog (prioritizes Supabase if configured, with auto-seed and real-time sync)
    */
   public async getAllCharacters(): Promise<Character[]> {
-    // 1. Sync with server persistent database (/api/characters)
+    // 1. PRIMARY: Fetch directly from Supabase table 'characters'
+    if (isSupabaseConfigured()) {
+      const supabase = getSupabase();
+      if (supabase) {
+        this.initSupabaseRealtime(supabase);
+
+        try {
+          const { data, error } = await supabase
+            .from('characters')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+          if (!error && Array.isArray(data)) {
+            // Case A: Table is empty -> seed initial characters to Supabase immediately
+            if (data.length === 0) {
+              await this.seedInitialSupabaseCharacters(supabase);
+              this.saveCatalog(INITIAL_CHARACTERS, false);
+              return INITIAL_CHARACTERS;
+            }
+
+            // Case B: Table has characters -> map and ensure canonical defaults
+            const mapped: Character[] = data.map((row: any) => this.mapSupabaseRowToCharacter(row));
+
+            // Check if Tuyên Lãng (char-1) exists in Supabase. If missing, auto-insert to Supabase!
+            const hasTuyenLang = mapped.some((c) => c.name === 'Tuyên Lãng');
+            if (!hasTuyenLang) {
+              try {
+                const tl = INITIAL_CHARACTERS[0];
+                await supabase.from('characters').insert({
+                  id: tl.id,
+                  name: tl.name,
+                  role: tl.role || null,
+                  age: tl.age ? Number(tl.age) : null,
+                  appearance: tl.appearance || null,
+                  avatar: tl.avatar,
+                  avatar_url: tl.avatarUrl || tl.avatar,
+                  short_description: tl.shortDescription || '',
+                  description: tl.description || '',
+                  character_link: tl.characterLink || null,
+                  is_locked: false,
+                  unlock_type: 'none',
+                  quote: tl.quote || null,
+                  tags: tl.tags || [],
+                });
+              } catch (insErr) {
+                console.warn('[CharacterRepository] Auto-insert Tuyên Lãng to Supabase warning:', insErr);
+              }
+            }
+
+            const merged = this.mergeWithDefaults(mapped);
+            this.saveCatalog(merged, false);
+            return merged;
+          }
+        } catch (err) {
+          console.warn('[CharacterRepository] Supabase getAllCharacters query error:', err);
+        }
+      }
+    }
+
+    // 2. FALLBACK: Sync with server persistent database (/api/characters)
     try {
       const res = await fetch('/api/characters');
       if (res.ok) {
@@ -185,52 +363,6 @@ class CharacterRepository {
       // Local fallback on network failure
     }
 
-    // 2. Sync with Supabase if configured
-    if (isSupabaseConfigured()) {
-      const supabase = getSupabase();
-      if (supabase) {
-        try {
-          const { data, error } = await supabase
-            .from('characters')
-            .select('*')
-            .order('created_at', { ascending: false });
-
-          if (!error && Array.isArray(data) && data.length > 0) {
-            const mapped: Character[] = data.map((row: any) => {
-              const cleanAvatar = resolveCharacterImageUrl(row.avatar || row.avatar_url);
-              return {
-                id: String(row.id),
-                name: row.name,
-                avatar: cleanAvatar,
-                avatarUrl: cleanAvatar,
-                shortDescription: row.short_description || (row.description ? row.description.slice(0, 75) : ''),
-                description: row.description || '',
-                characterLink: row.character_link || undefined,
-                isLocked: Boolean(row.is_locked),
-                locked: Boolean(row.is_locked),
-                isHidden: Boolean(row.is_hidden),
-                unlockType: row.unlock_type || 'none',
-                unlockCondition: row.unlock_condition || undefined,
-                quote: row.quote || undefined,
-                lore: row.lore || undefined,
-                tags: Array.isArray(row.tags) ? row.tags : [],
-                isFavorite: false,
-                favorite: false,
-                isPet: false,
-                pet: false,
-                createdAt: row.created_at || new Date().toISOString(),
-                updatedAt: row.updated_at || new Date().toISOString(),
-              };
-            });
-            const merged = this.mergeWithDefaults(mapped);
-            this.saveCatalog(merged, false);
-            return merged;
-          }
-        } catch (err) {
-          console.warn('[CharacterRepository] Supabase getAllCharacters query error:', err);
-        }
-      }
-    }
     return this.loadCatalog();
   }
 
@@ -318,6 +450,9 @@ class CharacterRepository {
       shortDescription,
       description,
       characterLink: input.characterLink?.trim() || undefined,
+      role: input.role?.trim() || undefined,
+      age: input.age !== undefined && input.age !== '' ? Number(input.age) : undefined,
+      appearance: input.appearance?.trim() || undefined,
       isLocked: Boolean(input.isLocked),
       locked: Boolean(input.isLocked),
       isHidden: Boolean(input.isHidden),
@@ -339,22 +474,38 @@ class CharacterRepository {
       const supabase = getSupabase();
       if (supabase) {
         try {
-          const { data, error } = await supabase.from('characters').insert({
+          const insertPayload: any = {
             id: newId,
             name,
             avatar,
+            avatar_url: avatar,
             short_description: shortDescription,
             description,
             character_link: input.characterLink?.trim() || null,
+            role: input.role?.trim() || null,
+            age: input.age !== undefined && input.age !== '' ? Number(input.age) : null,
+            appearance: input.appearance?.trim() || null,
             is_locked: Boolean(input.isLocked),
+            is_hidden: Boolean(input.isHidden),
             unlock_type: input.unlockType || 'none',
             unlock_condition: input.unlockType === 'condition' ? input.unlockCondition : null,
             quote: input.quote?.trim() || null,
             tags: Array.isArray(input.tags) ? input.tags : [],
+            created_at: now,
             updated_at: now,
-          }).select().single();
+          };
 
-          if (!error && data && data.id) {
+          const { data, error } = await supabase
+            .from('characters')
+            .insert(insertPayload)
+            .select()
+            .single();
+
+          if (error) {
+            console.warn('[CharacterRepository] Supabase insert warning (retrying basic payload):', error.message);
+            const { role, age, appearance, is_hidden, ...basic } = insertPayload;
+            await supabase.from('characters').insert(basic);
+          } else if (data && data.id) {
             newCharacter.id = String(data.id);
           }
         } catch (dbErr) {
@@ -432,6 +583,9 @@ class CharacterRepository {
       shortDescription,
       description,
       characterLink: input.characterLink !== undefined ? (input.characterLink.trim() || undefined) : current.characterLink,
+      role: input.role !== undefined ? (input.role.trim() || undefined) : current.role,
+      age: input.age !== undefined ? (input.age !== '' ? Number(input.age) : undefined) : current.age,
+      appearance: input.appearance !== undefined ? (input.appearance.trim() || undefined) : current.appearance,
       isLocked,
       locked: isLocked,
       isHidden,
@@ -448,19 +602,31 @@ class CharacterRepository {
       const supabase = getSupabase();
       if (supabase) {
         try {
-          await supabase.from('characters').update({
+          const updatePayload: any = {
             name,
             avatar,
+            avatar_url: avatar,
             short_description: shortDescription,
             description,
             character_link: input.characterLink !== undefined ? (input.characterLink.trim() || null) : (current.characterLink || null),
+            role: input.role !== undefined ? (input.role.trim() || null) : (current.role || null),
+            age: input.age !== undefined ? (input.age !== '' ? Number(input.age) : null) : (current.age !== undefined ? Number(current.age) : null),
+            appearance: input.appearance !== undefined ? (input.appearance.trim() || null) : (current.appearance || null),
             is_locked: Boolean(isLocked),
+            is_hidden: Boolean(isHidden),
             unlock_type: unlockType,
             unlock_condition: unlockType === 'condition' ? (input.unlockCondition || current.unlockCondition || null) : null,
             quote: input.quote !== undefined ? (input.quote.trim() || null) : (current.quote || null),
             tags: Array.isArray(tags) ? tags : [],
             updated_at: now,
-          }).eq('id', id);
+          };
+
+          const { error } = await supabase.from('characters').update(updatePayload).eq('id', id);
+          if (error) {
+            console.warn('[CharacterRepository] Supabase update warning (retrying basic payload):', error.message);
+            const { role, age, appearance, is_hidden, ...basic } = updatePayload;
+            await supabase.from('characters').update(basic).eq('id', id);
+          }
         } catch (dbErr) {
           console.warn('[CharacterRepository] Supabase character update warning:', dbErr);
         }

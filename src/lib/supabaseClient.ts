@@ -1,7 +1,17 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-// Environment credentials for Supabase (supports VITE_ prefixed or bare env variable names)
+// Environment credentials for Supabase (supports VITE_ prefixed or bare env variable names and localStorage)
 const getEnvVar = (key: string): string => {
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = localStorage.getItem(key) || localStorage.getItem(`be_ca_${key.toLowerCase()}`);
+      if (stored && typeof stored === 'string' && stored.trim()) {
+        return stored.trim();
+      }
+    } catch {
+      // ignore
+    }
+  }
   if (typeof import.meta !== 'undefined') {
     const metaEnv = (import.meta as { env?: Record<string, string | undefined> }).env;
     if (metaEnv) {
