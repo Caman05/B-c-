@@ -9,6 +9,7 @@ import {defineConfig, Plugin} from 'vite';
 const SERVER_AUTH_SECRET = process.env.SESSION_SECRET || 'be_ca_aquarium_ocean_secret_key_2026';
 const COMMENTS_FILE = path.join(process.cwd(), 'public', 'storage', 'data', 'comments.json');
 const NOTIFICATIONS_FILE = path.join(process.cwd(), 'public', 'storage', 'data', 'notifications.json');
+const CHARACTERS_FILE = path.join(process.cwd(), 'public', 'storage', 'data', 'characters.json');
 
 function signUserToken(payload: { userId: string; role: 'admin' | 'member'; email?: string; name?: string; avatarUrl?: string }): string {
   const data = {
@@ -92,6 +93,33 @@ function writeNotificationsDb(data: any[]): void {
     fs.renameSync(tmpFile, NOTIFICATIONS_FILE);
   } catch (err) {
     console.error('[API] Error writing notifications database:', err);
+  }
+}
+
+function readCharactersDb(): any[] {
+  try {
+    if (!fs.existsSync(CHARACTERS_FILE)) {
+      return [];
+    }
+    const raw = fs.readFileSync(CHARACTERS_FILE, 'utf-8');
+    return JSON.parse(raw) || [];
+  } catch (err) {
+    console.error('[API] Error reading characters database:', err);
+    return [];
+  }
+}
+
+function writeCharactersDb(data: any[]): void {
+  try {
+    const dir = path.dirname(CHARACTERS_FILE);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    const tmpFile = `${CHARACTERS_FILE}.${Date.now()}.tmp`;
+    fs.writeFileSync(tmpFile, JSON.stringify(data, null, 2), 'utf-8');
+    fs.renameSync(tmpFile, CHARACTERS_FILE);
+  } catch (err) {
+    console.error('[API] Error writing characters database:', err);
   }
 }
 
@@ -625,6 +653,131 @@ function storageDevPlugin(): Plugin {
             res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify({ success: false, error: err.message }));
           }
+          return;
+        }
+
+        next();
+      });
+
+      // 7. Handle Characters API: Persistent shared storage across all users and devices
+      server.middlewares.use(async (req, res, next) => {
+        if (!req.url || !req.url.startsWith('/api/characters')) {
+          next();
+          return;
+        }
+
+        const urlObj = new URL(req.url, 'http://localhost:3000');
+        const pathParts = urlObj.pathname.split('/').filter(Boolean);
+        // pathParts: ['api', 'characters'] or ['api', 'characters', ':id']
+        const charIdFromPath = pathParts.length > 2 ? pathParts[2] : null;
+
+        // GET: Fetch all characters from persistent server storage
+        if (req.method === 'GET') {
+          const chars = readCharactersDb();
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ success: true, characters: chars }));
+          return;
+        }
+
+        // POST: Add new character or bulk sync
+        if (req.method === 'POST') {
+          try {
+            const body = await parseJsonBody(req);
+
+            // Handle bulk sync/seed
+            if (Array.isArray(body)) {
+              writeCharactersDb(body);
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: true, count: body.length }));
+              return;
+            }
+
+            const chars = readCharactersDb();
+            const now = new Date().toISOString();
+            const newChar = {
+              ...body,
+              id: body.id || `char-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+              createdAt: body.createdAt || now,
+              updatedAt: now,
+            };
+
+            const existingIdx = chars.findIndex((c) => c.id === newChar.id);
+            if (existingIdx !== -1) {
+              chars[existingIdx] = newChar;
+            } else {
+              chars.unshift(newChar);
+            }
+
+            writeCharactersDb(chars);
+            res.statusCode = 201;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ success: true, character: newChar }));
+          } catch (err: any) {
+            res.statusCode = 400;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ success: false, error: err.message }));
+          }
+          return;
+        }
+
+        // PUT or PATCH: Update existing character
+        if (req.method === 'PUT' || req.method === 'PATCH') {
+          try {
+            const targetId = charIdFromPath || urlObj.searchParams.get('id');
+            if (!targetId) {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: false, error: 'Thiếu ID nhân vật cần cập nhật.' }));
+              return;
+            }
+
+            const body = await parseJsonBody(req);
+            const chars = readCharactersDb();
+            const index = chars.findIndex((c) => c.id === targetId);
+
+            if (index === -1) {
+              res.statusCode = 404;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: false, error: `Không tìm thấy nhân vật có ID: ${targetId}` }));
+              return;
+            }
+
+            const current = chars[index];
+            const updated = {
+              ...current,
+              ...body,
+              id: targetId,
+              updatedAt: new Date().toISOString(),
+            };
+            chars[index] = updated;
+            writeCharactersDb(chars);
+
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ success: true, character: updated }));
+          } catch (err: any) {
+            res.statusCode = 400;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ success: false, error: err.message }));
+          }
+          return;
+        }
+
+        // DELETE: Delete character by ID
+        if (req.method === 'DELETE') {
+          const targetId = charIdFromPath || urlObj.searchParams.get('id');
+          if (!targetId) {
+            res.statusCode = 400;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ success: false, error: 'Thiếu ID nhân vật cần xóa.' }));
+            return;
+          }
+
+          const chars = readCharactersDb();
+          const filtered = chars.filter((c) => c.id !== targetId);
+          writeCharactersDb(filtered);
+
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ success: true, deletedId: targetId }));
           return;
         }
 

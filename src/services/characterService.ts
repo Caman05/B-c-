@@ -11,9 +11,8 @@ import { Character } from '../types';
 import { INITIAL_CHARACTERS } from '../data/characters';
 import { userCharacterRepository } from './userCharacterRepository';
 import { unlockService, UnlockActionResult } from './unlockService';
+import { characterRepository } from './characterRepository';
 import { resolveCharacterImageUrl, DEFAULT_FALLBACK_AVATAR, isTemporaryBlobUrl } from '../lib/imageUtils';
-
-const STORAGE_KEY_CHARACTERS = 'be_ca_characters_v5';
 
 /**
  * Normalizes a character from storage/defaults and merges per-user state from userCharacterRepository
@@ -73,69 +72,17 @@ export function normalizeCharacter(
 }
 
 /**
- * Loads raw characters catalog from storage or seeds defaults
+ * Loads raw characters catalog from repository (with auto-seed & merge)
  */
 function loadCatalog(): Character[] {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY_CHARACTERS);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        let hasObsolete = false;
-        const OBSOLETE_TAGS = ['ẩn sĩ', 'chiến binh', 'cổ phong', 'ký ức'];
-        const cleaned = parsed.map((c: any) => {
-          let modified = false;
-          const currentTags = Array.isArray(c?.tags) ? c.tags : [];
-          const sanitizedTags = currentTags.filter((t: any) => {
-            if (!t || typeof t !== 'string') return false;
-            if (OBSOLETE_TAGS.includes(t.trim().toLowerCase())) {
-              modified = true;
-              return false;
-            }
-            return true;
-          });
-
-          if (c && c.lore !== undefined) {
-            modified = true;
-          }
-
-          let avatar = c.avatar || c.avatarUrl || '';
-          if (isTemporaryBlobUrl(avatar) || !avatar.trim()) {
-            avatar = DEFAULT_FALLBACK_AVATAR;
-            modified = true;
-          }
-
-          if (modified) {
-            hasObsolete = true;
-            const { lore: _unused, ...rest } = c;
-            return { ...rest, avatar, avatarUrl: avatar, tags: sanitizedTags } as Character;
-          }
-          return c as Character;
-        });
-        if (hasObsolete) {
-          saveCatalog(cleaned);
-        }
-        return cleaned;
-      }
-    }
-  } catch (err) {
-    console.warn('[CharacterService] Could not read catalog from storage:', err);
-  }
-
-  saveCatalog(INITIAL_CHARACTERS);
-  return INITIAL_CHARACTERS;
+  return characterRepository.loadCatalog();
 }
 
 /**
- * Saves characters catalog to storage
+ * Saves characters catalog to repository
  */
 function saveCatalog(characters: Character[]): void {
-  try {
-    localStorage.setItem(STORAGE_KEY_CHARACTERS, JSON.stringify(characters));
-    window.dispatchEvent(new CustomEvent('be_ca_catalog_updated'));
-  } catch (err) {
-    console.warn('[CharacterService] Could not save catalog to storage:', err);
-  }
+  characterRepository.saveCatalog(characters);
 }
 
 export const characterService = {
@@ -143,16 +90,16 @@ export const characterService = {
    * Synchronous load for initial state hydration
    */
   getCharactersSync(userId?: string, includeHidden = false): Character[] {
-    const catalog = loadCatalog();
+    const catalog = characterRepository.loadCatalog();
     const list = catalog.map((c) => normalizeCharacter(c, userId));
     return includeHidden ? list : list.filter((c) => !c.isHidden);
   },
 
   /**
-   * Asynchronous fetch matching Supabase Client API signature
+   * Asynchronous fetch syncing with persistent server database
    */
   async getCharacters(userId?: string, includeHidden = false): Promise<Character[]> {
-    const catalog = loadCatalog();
+    const catalog = await characterRepository.getAllCharacters();
     const list = catalog.map((c) => normalizeCharacter(c, userId));
     return includeHidden ? list : list.filter((c) => !c.isHidden);
   },
@@ -161,7 +108,7 @@ export const characterService = {
    * Get character by ID with current user's unlock & favorite states
    */
   async getCharacterById(id: string, userId?: string): Promise<Character | null> {
-    const catalog = loadCatalog();
+    const catalog = await characterRepository.getAllCharacters();
     const found = catalog.find((c) => c.id === id);
     if (!found) return null;
     return normalizeCharacter(found, userId);

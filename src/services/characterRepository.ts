@@ -14,7 +14,17 @@ import {
   normalizePersistentImageReference 
 } from '../lib/imageUtils';
 
-const STORAGE_KEY_CHARACTERS = 'be_ca_characters_v5';
+export const CHARACTERS_VERSION = 6;
+export const STORAGE_KEY_CHARACTERS = 'be_ca_characters_v6';
+export const STORAGE_KEY_CHARACTERS_VERSION = 'be_ca_characters_version';
+const LEGACY_STORAGE_KEYS = [
+  'be_ca_characters',
+  'be_ca_characters_v1',
+  'be_ca_characters_v2',
+  'be_ca_characters_v3',
+  'be_ca_characters_v4',
+  'be_ca_characters_v5',
+];
 const STORAGE_KEY_SECRETS = 'be_ca_character_secrets_v2';
 
 // Private secrets store mapping (character_id -> secret_code)
@@ -25,75 +35,125 @@ const DEFAULT_SECRETS: Record<string, string> = {
 
 class CharacterRepository {
   /**
+   * Guarantees that all default characters from INITIAL_CHARACTERS exist in the catalog
+   */
+  public mergeWithDefaults(list: Character[]): Character[] {
+    const existingIds = new Set(list.map((c) => c.id));
+    const merged = [...list];
+    for (const defChar of INITIAL_CHARACTERS) {
+      if (!existingIds.has(defChar.id)) {
+        merged.push(defChar);
+        existingIds.add(defChar.id);
+      }
+    }
+    return merged;
+  }
+
+  /**
    * Load master catalog from storage or seed initial default characters
    */
   public loadCatalog(): Character[] {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY_CHARACTERS);
+      let raw = localStorage.getItem(STORAGE_KEY_CHARACTERS);
+      if (!raw) {
+        // Attempt migration from previous versions
+        for (const legKey of ['be_ca_characters_v5', 'be_ca_characters_v4', 'be_ca_characters']) {
+          const legData = localStorage.getItem(legKey);
+          if (legData) {
+            raw = legData;
+            break;
+          }
+        }
+      }
+
+      // Purge obsolete legacy keys
+      LEGACY_STORAGE_KEYS.forEach((key) => {
+        try {
+          if (key !== STORAGE_KEY_CHARACTERS) {
+            localStorage.removeItem(key);
+          }
+        } catch {
+          // ignore
+        }
+      });
+
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          let hasObsolete = false;
           const OBSOLETE_TAGS = ['ẩn sĩ', 'chiến binh', 'cổ phong', 'ký ức'];
           const cleaned = parsed.map((c: any) => {
-            let modified = false;
             const currentTags = Array.isArray(c?.tags) ? c.tags : [];
             const sanitizedTags = currentTags.filter((t: any) => {
               if (!t || typeof t !== 'string') return false;
               if (OBSOLETE_TAGS.includes(t.trim().toLowerCase())) {
-                modified = true;
                 return false;
               }
               return true;
             });
 
-            if (c && c.lore !== undefined) {
-              modified = true;
-            }
-
-            // Detect and repair broken/temporary blob URLs (e.g. Thiệu Minh or previously uploaded blobs)
+            // Detect and repair broken/temporary blob URLs
             let avatar = c.avatar || c.avatarUrl || '';
             if (isTemporaryBlobUrl(avatar) || !avatar.trim()) {
               avatar = DEFAULT_FALLBACK_AVATAR;
-              modified = true;
             }
 
-            if (modified) {
-              hasObsolete = true;
-              const { lore: _unused, ...rest } = c;
-              return { ...rest, avatar, avatarUrl: avatar, tags: sanitizedTags } as Character;
-            }
-            return c as Character;
+            const { lore: _unused, ...rest } = c;
+            return {
+              ...rest,
+              avatar,
+              avatarUrl: avatar,
+              tags: sanitizedTags,
+            } as Character;
           });
-          if (hasObsolete) {
-            this.saveCatalog(cleaned);
-          }
-          return cleaned;
+
+          // Always guarantee all default characters are present for any user
+          const merged = this.mergeWithDefaults(cleaned);
+          this.saveCatalog(merged, false);
+          return merged;
         }
       }
     } catch (e) {
       console.warn('[CharacterRepository] Load catalog error:', e);
     }
-    this.saveCatalog(INITIAL_CHARACTERS);
+    this.saveCatalog(INITIAL_CHARACTERS, false);
     return INITIAL_CHARACTERS;
   }
 
   /**
    * Save master catalog to storage and notify event listeners
    */
-  public saveCatalog(characters: Character[]): void {
+  public saveCatalog(characters: Character[], dispatchEvent = true): void {
     try {
       localStorage.setItem(STORAGE_KEY_CHARACTERS, JSON.stringify(characters));
-      window.dispatchEvent(new CustomEvent('be_ca_catalog_updated'));
+      localStorage.setItem(STORAGE_KEY_CHARACTERS_VERSION, String(CHARACTERS_VERSION));
+      if (dispatchEvent) {
+        window.dispatchEvent(new CustomEvent('be_ca_catalog_updated'));
+      }
     } catch (e) {
       console.error('[CharacterRepository] Save catalog error:', e);
     }
   }
 
   /**
-   * Get all characters in catalog (syncs with Supabase if configured)
+   * Get all characters in catalog (syncs with /api/characters and Supabase if configured)
    */
   public async getAllCharacters(): Promise<Character[]> {
+    // 1. Sync with server persistent database (/api/characters)
+    try {
+      const res = await fetch('/api/characters');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.characters) && data.characters.length > 0) {
+          const merged = this.mergeWithDefaults(data.characters);
+          this.saveCatalog(merged, false);
+          return merged;
+        }
+      }
+    } catch (apiErr) {
+      // Local fallback on network failure
+    }
+
+    // 2. Sync with Supabase if configured
     if (isSupabaseConfigured()) {
       const supabase = getSupabase();
       if (supabase) {
@@ -130,8 +190,9 @@ class CharacterRepository {
                 updatedAt: row.updated_at || new Date().toISOString(),
               };
             });
-            this.saveCatalog(mapped);
-            return mapped;
+            const merged = this.mergeWithDefaults(mapped);
+            this.saveCatalog(merged, false);
+            return merged;
           }
         } catch (err) {
           console.warn('[CharacterRepository] Supabase getAllCharacters query error:', err);
@@ -274,6 +335,17 @@ class CharacterRepository {
     const updated = [newCharacter, ...catalog.filter(c => c.id !== newCharacter.id)];
     this.saveCatalog(updated);
 
+    // 2. Sync insert with server persistent database (/api/characters)
+    try {
+      await fetch('/api/characters', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newCharacter),
+      });
+    } catch (err) {
+      console.warn('[CharacterRepository] Server /api/characters POST error:', err);
+    }
+
     // If unlock type is 'code' and code provided, save to secret store
     if (input.unlockType === 'code' && input.unlockCode) {
       this.setSecretCode(newCharacter.id, input.unlockCode);
@@ -366,6 +438,17 @@ class CharacterRepository {
     catalog[index] = updatedCharacter;
     this.saveCatalog(catalog);
 
+    // 2. Sync update with server persistent database (/api/characters/:id)
+    try {
+      await fetch(`/api/characters/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedCharacter),
+      });
+    } catch (err) {
+      console.warn('[CharacterRepository] Server /api/characters PUT error:', err);
+    }
+
     // Update secret code if unlockType is 'code' and unlockCode provided
     if (unlockType === 'code' && input.unlockCode) {
       this.setSecretCode(id, input.unlockCode);
@@ -431,6 +514,18 @@ class CharacterRepository {
 
     catalog[index] = updatedCharacter;
     this.saveCatalog(catalog);
+
+    // 2. Sync avatar update with server persistent database (/api/characters/:id)
+    try {
+      await fetch(`/api/characters/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedCharacter),
+      });
+    } catch (err) {
+      console.warn('[CharacterRepository] Server /api/characters PUT error:', err);
+    }
+
     auditService.log('Cập nhật ảnh nhân vật', 'character', `Cập nhật ảnh đại diện cho: "${current.name}" (${id}) -> ${persistentRef}`);
     return updatedCharacter;
   }
@@ -461,6 +556,15 @@ class CharacterRepository {
 
     const filtered = catalog.filter((c) => c.id !== id);
     this.saveCatalog(filtered);
+
+    // 2. Sync delete with server persistent database (/api/characters/:id)
+    try {
+      await fetch(`/api/characters/${id}`, {
+        method: 'DELETE',
+      });
+    } catch (err) {
+      console.warn('[CharacterRepository] Server /api/characters DELETE error:', err);
+    }
 
     // Cascade Cleanup: Clean up from user_characters relation store
     try {

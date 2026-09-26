@@ -323,3 +323,5 @@ export const INITIAL_CHARACTERS: Character[] = [
     updatedAt: '2026-03-05T22:00:00.000Z',
   }
 ];
+
+export const DEFAULT_CHARACTERS = INITIAL_CHARACTERS;

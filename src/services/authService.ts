@@ -17,10 +17,12 @@ export interface Profile {
 export const APP_OWNER_EMAIL = 'quynhchinga1229@gmail.com';
 export const APP_OWNER_ID = 'owner-quynhchinga1229';
 
+export const DEFAULT_ADMIN_AVATAR = 'https://files.catbox.moe/zg1ujp.jpg';
+
 const STORAGE_KEY_PROFILES = 'be_ca_profiles_v2';
 const STORAGE_KEY_CURRENT_USER_ID = 'be_ca_current_user_id_v2';
 const STORAGE_KEY_TEST_MEMBER_MODE = 'be_ca_is_test_member_mode_v2';
-const RESTORE_PATCH_KEY = 'be_ca_admin_restore_patch_v3';
+const RESTORE_PATCH_KEY = 'be_ca_admin_restore_patch_v4';
 
 const INITIAL_PROFILES: Profile[] = [
   {
@@ -29,7 +31,7 @@ const INITIAL_PROFILES: Profile[] = [
     name: 'Chủ Bể Cá',
     username: 'quynhchinga1229',
     bio: 'Người sáng lập và quản trị tối cao của không gian BỂ CÁ.',
-    avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
+    avatarUrl: DEFAULT_ADMIN_AVATAR,
     role: 'admin', // Sole App Owner Admin
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
@@ -74,7 +76,7 @@ class AuthService {
    */
   public restoreOwnerAdminIfTrapped(): void {
     try {
-      const isPatchApplied = localStorage.getItem(RESTORE_PATCH_KEY) === 'v3_applied';
+      const isPatchApplied = localStorage.getItem(RESTORE_PATCH_KEY) === 'v4_applied';
       const savedId = localStorage.getItem(STORAGE_KEY_CURRENT_USER_ID);
       const isTestMode = localStorage.getItem(STORAGE_KEY_TEST_MEMBER_MODE) === 'true';
 
@@ -82,7 +84,7 @@ class AuthService {
       if (!isPatchApplied || (savedId && (savedId === 'user-demo-1' || savedId === 'user-demo-2') && !isTestMode)) {
         console.log('[AuthService] Restoring Owner Admin access for', APP_OWNER_EMAIL);
         this.restoreOwnerAdmin();
-        localStorage.setItem(RESTORE_PATCH_KEY, 'v3_applied');
+        localStorage.setItem(RESTORE_PATCH_KEY, 'v4_applied');
       }
     } catch (e) {
       console.warn('[AuthService] Trapped state check error:', e);
@@ -120,9 +122,15 @@ class AuthService {
     profiles = profiles.map((p) => {
       if (p.email.toLowerCase() === APP_OWNER_EMAIL.toLowerCase() || p.id === APP_OWNER_ID) {
         ownerFound = true;
-        if (p.role !== 'admin') {
+        let avatarUrl = p.avatarUrl;
+        // Upgrade legacy default unsplash avatar to the new catbox avatar
+        if (!avatarUrl || avatarUrl.includes('photo-1534528741775-53994a69daeb')) {
+          avatarUrl = DEFAULT_ADMIN_AVATAR;
           hasModified = true;
-          return { ...p, role: 'admin' as UserRole, email: APP_OWNER_EMAIL };
+        }
+        if (p.role !== 'admin' || avatarUrl !== p.avatarUrl) {
+          hasModified = true;
+          return { ...p, role: 'admin' as UserRole, email: APP_OWNER_EMAIL, avatarUrl };
         }
         return p;
       } else {
@@ -181,6 +189,9 @@ class AuthService {
 
     if (owner) {
       owner.role = 'admin';
+      if (!owner.avatarUrl || owner.avatarUrl.includes('photo-1534528741775-53994a69daeb')) {
+        owner.avatarUrl = DEFAULT_ADMIN_AVATAR;
+      }
     } else {
       owner = { ...INITIAL_PROFILES[0] };
       profiles.unshift(owner);
@@ -572,7 +583,7 @@ class AuthService {
       name: name.trim() || 'Người Lặn Biển Mới',
       username: username?.trim().replace(/^@/, '') || trimmedEmail.split('@')[0],
       bio: 'Thành viên mới gia nhập BỂ CÁ.',
-      avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
+      avatarUrl: role === 'admin' ? DEFAULT_ADMIN_AVATAR : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
       role,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
