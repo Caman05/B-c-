@@ -27,6 +27,18 @@ export const CharacterComments: React.FC<CharacterCommentsProps> = ({
 }) => {
   const [comments, setComments] = useState<CharacterComment[]>([]);
   const [inputContent, setInputContent] = useState('');
+  const [authorNameInput, setAuthorNameInput] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('be_ca_commenter_name');
+      if (saved) return saved;
+    }
+    const u = authService.getCurrentUser();
+    if (u?.name && u.name !== 'Người Lặn Biển #1' && u.name !== 'Người Lặn Biển #2') {
+      return u.name;
+    }
+    if (u?.role === 'admin') return 'Chủ Bể Cá';
+    return '';
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState(() => authService.getCurrentUser());
@@ -99,7 +111,7 @@ export const CharacterComments: React.FC<CharacterCommentsProps> = ({
     setErrorMessage(null);
 
     try {
-      await commentService.addComment(characterId, trimmed);
+      await commentService.addComment(characterId, trimmed, authorNameInput.trim());
       setInputContent('');
       loadComments();
       // Scroll to newest comment
@@ -107,7 +119,10 @@ export const CharacterComments: React.FC<CharacterCommentsProps> = ({
         commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
       }, 100);
     } catch (err: any) {
-      setErrorMessage(err?.message || 'Không thể đăng bình luận. Vui lòng thử lại.');
+      console.warn('[CharacterComments] Comment submission error, local fallback active:', err);
+      // Fallback already saved locally, reload comments
+      setInputContent('');
+      loadComments();
     } finally {
       setIsSubmitting(false);
     }
@@ -324,6 +339,34 @@ export const CharacterComments: React.FC<CharacterCommentsProps> = ({
 
       {/* Input Form */}
       <form onSubmit={handleSubmit} className="space-y-2 pt-1">
+        {/* Author Name Input */}
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded-full bg-cyan-100 border border-cyan-200 text-cyan-800 flex items-center justify-center shrink-0 text-xs font-bold">
+            {authorNameInput.trim() ? (
+              authorNameInput.trim().charAt(0).toUpperCase()
+            ) : (
+              <User className="w-3 h-3 text-cyan-600" />
+            )}
+          </div>
+          <input
+            type="text"
+            id="character-comment-name-input"
+            value={authorNameInput}
+            onChange={(e) => {
+              setAuthorNameInput(e.target.value);
+              try {
+                localStorage.setItem('be_ca_commenter_name', e.target.value);
+              } catch {
+                // ignore
+              }
+            }}
+            placeholder="Tên của bạn (mặc định: Ẩn danh)"
+            maxLength={40}
+            disabled={isSubmitting}
+            className="flex-1 px-3 py-1.5 rounded-xl bg-white/95 border border-slate-300 text-xs text-[#0a2540] placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all shadow-2xs disabled:opacity-50"
+          />
+        </div>
+
         <div className="relative">
           <textarea
             id="character-comment-textarea"

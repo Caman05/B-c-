@@ -367,20 +367,13 @@ function storageDevPlugin(): Plugin {
           return;
         }
 
-        // POST: Add new comment (requires valid Bearer token)
+        // POST: Add new comment (open to all visitors, no login required)
         if (req.method === 'POST') {
-          const authHeader = req.headers['authorization'];
-          const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
-          const authUser = token ? verifyUserToken(token) : null;
-
-          if (!authUser) {
-            res.statusCode = 401;
-            res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify({ success: false, error: 'Yêu cầu đăng nhập hợp lệ để bình luận.' }));
-            return;
-          }
-
           try {
+            const authHeader = req.headers['authorization'];
+            const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+            const authUser = token ? verifyUserToken(token) : null;
+
             const body = await parseJsonBody(req);
             const characterId = (body.characterId || '').trim();
             const content = (body.content || '').trim();
@@ -398,16 +391,23 @@ function storageDevPlugin(): Plugin {
               return;
             }
 
+            const rawAuthorName = (body.userName || body.authorName || (authUser ? authUser.name : '') || '').trim();
+            const authorName = rawAuthorName || 'Ẩn danh';
+            const authorRole = authUser ? authUser.role : (body.authorRole || 'member');
+            const authorAvatar = authUser ? (authUser.avatarUrl || '') : (body.authorAvatar || '');
+            const authorEmail = authUser ? (authUser.email || '') : (body.authorEmail || '');
+            const userId = authUser ? authUser.userId : (body.userId || ('guest-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7)));
+
             const newComment = {
-              id: 'cmt-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9),
+              id: body.id || ('cmt-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9)),
               characterId,
-              userId: authUser.userId,
-              authorName: authUser.name || (authUser.role === 'admin' ? 'Chủ Bể Cá' : 'Người Lặn Biển'),
-              authorEmail: authUser.email || '',
-              authorRole: authUser.role,
-              authorAvatar: authUser.avatarUrl || '',
+              userId,
+              authorName,
+              authorEmail,
+              authorRole,
+              authorAvatar,
               content,
-              createdAt: new Date().toISOString(),
+              createdAt: body.createdAt || new Date().toISOString(),
             };
 
             const db = readCommentsDb();
@@ -429,7 +429,7 @@ function storageDevPlugin(): Plugin {
                 characterName: charName,
                 characterAvatar: charAvatar,
                 commentId: newComment.id,
-                userId: authUser.userId,
+                userId,
                 authorName: newComment.authorName,
                 authorEmail: newComment.authorEmail,
                 authorRole: newComment.authorRole,
@@ -451,7 +451,7 @@ function storageDevPlugin(): Plugin {
           } catch (err: any) {
             res.statusCode = 500;
             res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify({ success: false, error: err.message }));
+            res.end(JSON.stringify({ success: false, error: err.message || 'Lỗi xử lý bình luận.' }));
           }
           return;
         }

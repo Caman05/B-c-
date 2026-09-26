@@ -209,9 +209,14 @@ class CommentService {
 
   /**
    * Add a new comment to a character
-   * Persists to Backend API and Supabase (if configured)
+   * Sends directly to Supabase with character_id, user_name, content without requiring login.
+   * If network fails, automatically falls back to localStorage so the comment appears immediately without blocking errors.
    */
-  public async addComment(characterId: string, content: string): Promise<CharacterComment> {
+  public async addComment(
+    characterId: string, 
+    content: string, 
+    customAuthorName?: string
+  ): Promise<CharacterComment> {
     const trimmed = content.trim();
     if (!characterId) {
       throw new Error('ID nhân vật không hợp lệ.');
@@ -220,8 +225,24 @@ class CommentService {
       throw new Error('Nội dung bình luận không được để trống.');
     }
 
-    const currentUser = authService.getCurrentUser();
-    const headers = await authService.getAuthHeaders();
+    // Determine author information (custom name, current user, or default 'Ẩn danh')
+    let currentUser: any = null;
+    try {
+      currentUser = authService.getCurrentUser();
+    } catch {
+      // ignore
+    }
+
+    const trimmedAuthorName = (customAuthorName || '').trim();
+    const finalAuthorName = trimmedAuthorName 
+      || (currentUser?.name && currentUser?.name !== 'Người Lặn Biển #1' && currentUser?.name !== 'Người Lặn Biển #2' ? currentUser.name : '')
+      || (currentUser?.role === 'admin' ? 'Chủ Bể Cá' : '') 
+      || 'Ẩn danh';
+
+    const finalUserId = currentUser?.id || `guest-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const finalAuthorRole = currentUser?.role || 'member';
+    const finalAuthorAvatar = currentUser?.avatarUrl || '';
+    const finalAuthorEmail = currentUser?.email || '';
 
     // Find character metadata for notification context
     let characterName = 'Nhân vật';
@@ -237,27 +258,108 @@ class CommentService {
       // fallback
     }
 
-    // 1. Post to Backend API
-    const res = await fetch('/api/comments', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        characterId,
-        characterName,
-        characterAvatar,
-        content: trimmed,
-      }),
-    });
+    const now = new Date().toISOString();
+    const newCommentId = `cmt-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
-    const data = await res.json().catch(() => ({}));
+    const newComment: CharacterComment = {
+      id: newCommentId,
+      characterId,
+      userId: finalUserId,
+      authorName: finalAuthorName,
+      authorEmail: finalAuthorEmail,
+      authorRole: finalAuthorRole,
+      authorAvatar: finalAuthorAvatar,
+      content: trimmed,
+      createdAt: now,
+    };
 
-    if (!res.ok || !data.success) {
-      throw new Error(data.error || 'Không thể đăng bình luận. Vui lòng kiểm tra lại quyền truy cập.');
+    // 1. Immediately update local storage & memory cache so UI displays comment instantly
+    const all = this.loadAllFromLocal();
+    if (!all[characterId]) all[characterId] = [];
+    all[characterId].push(newComment);
+    this.saveAllToLocal(all);
+
+    // Dispatch reactive update event immediately
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('be_ca_character_comments_changed', {
+          detail: { characterId, comment: newComment },
+        })
+      );
     }
 
-    const newComment: CharacterComment = data.comment;
+    // 2. Post to shared server database (/api/comments) if reachable
+    try {
+      let headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      try {
+        const authHeaders = await authService.getAuthHeaders();
+        headers = { ...headers, ...authHeaders };
+      } catch {
+        // no auth headers needed
+      }
 
-    // Record local notification for Admin
+      await fetch('/api/comments', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          id: newComment.id,
+          characterId,
+          characterName,
+          characterAvatar,
+          content: trimmed,
+          userName: finalAuthorName,
+          authorName: finalAuthorName,
+          userId: finalUserId,
+          authorRole: finalAuthorRole,
+          authorAvatar: finalAuthorAvatar,
+        }),
+      });
+    } catch (apiErr) {
+      console.warn('[CommentService] Backend API deferred, comment kept in local storage:', apiErr);
+    }
+
+    // 3. Send character_id, user_name, content directly to Supabase without requiring user session/token
+    if (isSupabaseConfigured()) {
+      const supabase = getSupabase();
+      if (supabase) {
+        try {
+          // Attempt inserting standard character_id, user_name, content
+          const { error: sbError } = await supabase
+            .from('character_comments')
+            .insert({
+              id: newComment.id,
+              character_id: characterId,
+              user_name: finalAuthorName,
+              author_name: finalAuthorName,
+              content: trimmed,
+              user_id: finalUserId,
+              author_role: finalAuthorRole,
+              author_avatar: finalAuthorAvatar,
+              created_at: now,
+            });
+
+          if (sbError) {
+            console.warn('[CommentService] Supabase insert warning (schema fallback):', sbError.message);
+            // Try minimal payload: character_id, user_name, content
+            try {
+              await supabase
+                .from('character_comments')
+                .insert({
+                  character_id: characterId,
+                  user_name: finalAuthorName,
+                  content: trimmed,
+                });
+            } catch {
+              // ignore
+            }
+          }
+        } catch (err) {
+          console.warn('[CommentService] Supabase network error, comment safely saved to local storage:', err);
+        }
+      }
+    }
+
+    // 4. Record local notification for Admin
     try {
       notificationService.recordCommentNotification({
         characterId,
@@ -273,47 +375,7 @@ class CommentService {
         createdAt: newComment.createdAt,
       });
     } catch (notifErr) {
-      console.warn('[CommentService] Notification recording error:', notifErr);
-    }
-
-    // 2. Sync to Supabase if configured
-    if (isSupabaseConfigured()) {
-      const supabase = getSupabase();
-      if (supabase) {
-        try {
-          await supabase
-            .from('character_comments')
-            .insert({
-              id: newComment.id,
-              character_id: newComment.characterId,
-              user_id: newComment.userId,
-              author_name: newComment.authorName,
-              author_email: newComment.authorEmail,
-              author_role: newComment.authorRole,
-              author_avatar: newComment.authorAvatar,
-              content: newComment.content,
-              created_at: newComment.createdAt,
-            });
-        } catch (err) {
-          console.warn('[CommentService] Supabase insert error:', err);
-        }
-      }
-    }
-
-    // 3. Update local cache
-    const all = this.loadAllFromLocal();
-    const list = all[characterId] || [];
-    list.push(newComment);
-    all[characterId] = list;
-    this.saveAllToLocal(all);
-
-    // 4. Dispatch reactive update event
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(
-        new CustomEvent('be_ca_character_comments_changed', {
-          detail: { characterId, comment: newComment },
-        })
-      );
+      // ignore
     }
 
     return newComment;

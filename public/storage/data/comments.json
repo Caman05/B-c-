@@ -1,3 +1,28 @@
 {
-  "char-1": []
+  "char-1": [
+    {
+      "id": "cmt-1790413659145-29qtbfw",
+      "characterId": "char-1",
+      "userId": "owner-quynhchinga1229",
+      "authorName": "Chủ Bể Cá",
+      "authorEmail": "quynhchinga1229@gmail.com",
+      "authorRole": "admin",
+      "authorAvatar": "https://i.pinimg.com/1200x/32/31/ec/3231ecff469c9ee87ab35ec80f147d9c.jpg",
+      "content": "Test cmt",
+      "createdAt": "2026-09-26T09:07:39.145Z"
+    }
+  ],
+  "char-2": [
+    {
+      "id": "cmt-1790411402100-sv1mx2k",
+      "characterId": "char-2",
+      "userId": "owner-quynhchinga1229",
+      "authorName": "Chủ Bể Cá",
+      "authorEmail": "quynhchinga1229@gmail.com",
+      "authorRole": "admin",
+      "authorAvatar": "https://i.pinimg.com/1200x/32/31/ec/3231ecff469c9ee87ab35ec80f147d9c.jpg",
+      "content": "Iu ăngggg",
+      "createdAt": "2026-09-26T08:30:02.100Z"
+    }
+  ]
 }
