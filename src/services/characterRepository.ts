@@ -90,280 +90,49 @@ class CharacterRepository {
   }
 
   /**
-   * Load master catalog from storage or seed initial default characters
+   * Load master catalog directly from code definitions (src/data/characters.ts).
+   * Bypasses and purges localStorage so the web always displays the exact source of truth.
    */
   public loadCatalog(): Character[] {
     try {
-      let raw = localStorage.getItem(STORAGE_KEY_CHARACTERS);
-
-      // Purge obsolete legacy keys
-      LEGACY_STORAGE_KEYS.forEach((key) => {
+      [
+        'be_ca_characters',
+        'be_ca_characters_v1',
+        'be_ca_characters_v2',
+        'be_ca_characters_v3',
+        'be_ca_characters_v4',
+        'be_ca_characters_v5',
+        'be_ca_characters_v6',
+        'be_ca_characters_v7',
+        'be_ca_characters_version',
+      ].forEach((key) => {
         try {
-          if (key !== STORAGE_KEY_CHARACTERS) {
-            localStorage.removeItem(key);
-          }
+          localStorage.removeItem(key);
         } catch {
           // ignore
         }
       });
-
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const OBSOLETE_TAGS = ['ẩn sĩ', 'chiến binh', 'cổ phong', 'ký ức'];
-          const cleaned = parsed.map((c: any) => {
-            const currentTags = Array.isArray(c?.tags) ? c.tags : [];
-            const sanitizedTags = currentTags.filter((t: any) => {
-              if (!t || typeof t !== 'string') return false;
-              if (OBSOLETE_TAGS.includes(t.trim().toLowerCase())) {
-                return false;
-              }
-              return true;
-            });
-
-            // Detect and repair broken/temporary blob URLs
-            let avatar = c.avatar || c.avatarUrl || '';
-            if (isTemporaryBlobUrl(avatar) || !avatar.trim()) {
-              avatar = DEFAULT_FALLBACK_AVATAR;
-            }
-
-            const { lore: _unused, ...rest } = c;
-            return {
-              ...rest,
-              avatar,
-              avatarUrl: avatar,
-              tags: sanitizedTags,
-            } as Character;
-          });
-
-          // Always guarantee all default characters (specifically Tuyên Lãng) are present
-          const merged = this.mergeWithDefaults(cleaned);
-          this.saveCatalog(merged, false);
-          return merged;
-        }
-      }
     } catch (e) {
-      console.warn('[CharacterRepository] Load catalog error:', e);
+      // ignore
     }
 
-    // Default seed for new sessions/incognito
-    this.saveCatalog(INITIAL_CHARACTERS, false);
     return INITIAL_CHARACTERS;
   }
 
   /**
-   * Save master catalog to storage and notify event listeners
+   * Save master catalog - dispatches catalog updated event
    */
   public saveCatalog(characters: Character[], dispatchEvent = true): void {
-    try {
-      localStorage.setItem(STORAGE_KEY_CHARACTERS, JSON.stringify(characters));
-      localStorage.setItem(STORAGE_KEY_CHARACTERS_VERSION, String(CHARACTERS_VERSION));
-      if (dispatchEvent) {
-        window.dispatchEvent(new CustomEvent('be_ca_catalog_updated'));
-      }
-    } catch (e) {
-      console.error('[CharacterRepository] Save catalog error:', e);
-    }
-  }
-
-  private realtimeChannel: any = null;
-
-  /**
-   * Helper to map a Supabase database row to a canonical Character object
-   */
-  public mapSupabaseRowToCharacter(row: any): Character {
-    const cleanAvatar = resolveCharacterImageUrl(row.avatar || row.avatar_url);
-    return {
-      id: String(row.id),
-      name: row.name,
-      role: row.role || undefined,
-      age: row.age !== null && row.age !== undefined ? Number(row.age) : undefined,
-      appearance: row.appearance || undefined,
-      avatar: cleanAvatar,
-      avatarUrl: cleanAvatar,
-      shortDescription: row.short_description || row.shortDescription || (row.description ? row.description.slice(0, 75) : ''),
-      description: row.description || '',
-      characterLink: row.character_link || row.characterLink || undefined,
-      isLocked: Boolean(row.is_locked ?? row.isLocked),
-      locked: Boolean(row.is_locked ?? row.isLocked),
-      isHidden: Boolean(row.is_hidden ?? row.isHidden),
-      unlockType: row.unlock_type || row.unlockType || 'none',
-      unlockCondition: row.unlock_condition || row.unlockCondition || undefined,
-      quote: row.quote || undefined,
-      lore: row.lore || undefined,
-      tags: Array.isArray(row.tags) ? row.tags : [],
-      isFavorite: false,
-      favorite: false,
-      isPet: false,
-      pet: false,
-      createdAt: row.created_at || row.createdAt || new Date().toISOString(),
-      updatedAt: row.updated_at || row.updatedAt || new Date().toISOString(),
-    };
-  }
-
-  /**
-   * Seeds initial default characters onto Supabase if characters table is empty
-   */
-  public async seedInitialSupabaseCharacters(supabase: any): Promise<Character[]> {
-    console.log('[CharacterRepository] Supabase characters table is empty. Seeding initial characters...');
-    const now = new Date().toISOString();
-    const rowsToInsert = INITIAL_CHARACTERS.map((char) => ({
-      id: char.id,
-      name: char.name,
-      role: char.role || null,
-      age: char.age ? Number(char.age) : null,
-      appearance: char.appearance || null,
-      avatar: char.avatar,
-      avatar_url: char.avatarUrl || char.avatar,
-      short_description: char.shortDescription || '',
-      description: char.description || '',
-      character_link: char.characterLink || null,
-      is_locked: Boolean(char.isLocked),
-      is_hidden: Boolean(char.isHidden),
-      unlock_type: char.unlockType || 'none',
-      unlock_condition: char.unlockCondition || null,
-      quote: char.quote || null,
-      tags: Array.isArray(char.tags) ? char.tags : [],
-      created_at: char.createdAt || now,
-      updated_at: char.updatedAt || now,
-    }));
-
-    try {
-      const { error } = await supabase.from('characters').insert(rowsToInsert);
-      if (error) {
-        console.warn('[CharacterRepository] Seeding with full columns warning:', error.message);
-        // Fallback with standard basic columns if table schema lacks role/age/appearance
-        const basicRows = rowsToInsert.map(({ role, age, appearance, ...rest }) => rest);
-        const res2 = await supabase.from('characters').insert(basicRows);
-        if (res2.error) {
-          console.warn('[CharacterRepository] Seeding basic columns warning:', res2.error.message);
-        }
-      }
-    } catch (e) {
-      console.warn('[CharacterRepository] Seeding network error:', e);
-    }
-
-    return INITIAL_CHARACTERS;
-  }
-
-  /**
-   * Initialize Supabase Realtime subscription on characters table
-   * Keeps all users and browsers instantly in sync when Admin makes changes
-   */
-  public initSupabaseRealtime(client?: any): void {
-    if (this.realtimeChannel) return;
-    const supabase = client || (isSupabaseConfigured() ? getSupabase() : null);
-    if (!supabase) return;
-
-    try {
-      this.realtimeChannel = supabase
-        .channel('public:characters_realtime_sync')
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'characters' },
-          async (payload: any) => {
-            console.log('[CharacterRepository] Realtime change detected on characters:', payload.eventType);
-            try {
-              const { data, error } = await supabase
-                .from('characters')
-                .select('*')
-                .order('created_at', { ascending: false });
-
-              if (!error && Array.isArray(data)) {
-                const mapped: Character[] = data.map((row: any) => this.mapSupabaseRowToCharacter(row));
-                const merged = this.mergeWithDefaults(mapped);
-                this.saveCatalog(merged, true);
-              }
-            } catch (err) {
-              console.warn('[CharacterRepository] Realtime refresh error:', err);
-            }
-          }
-        )
-        .subscribe();
-    } catch (err) {
-      console.warn('[CharacterRepository] Realtime channel setup warning:', err);
+    if (dispatchEvent && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('be_ca_catalog_updated'));
     }
   }
 
   /**
-   * Get all characters in catalog (prioritizes Supabase if configured, with auto-seed and real-time sync)
+   * Get all characters - returns canonical list from INITIAL_CHARACTERS directly
    */
   public async getAllCharacters(): Promise<Character[]> {
-    // 1. PRIMARY: Fetch directly from Supabase table 'characters'
-    if (isSupabaseConfigured()) {
-      const supabase = getSupabase();
-      if (supabase) {
-        this.initSupabaseRealtime(supabase);
-
-        try {
-          const { data, error } = await supabase
-            .from('characters')
-            .select('*')
-            .order('created_at', { ascending: false });
-
-          if (!error && Array.isArray(data)) {
-            // Case A: Table is empty -> seed initial characters to Supabase immediately
-            if (data.length === 0) {
-              await this.seedInitialSupabaseCharacters(supabase);
-              this.saveCatalog(INITIAL_CHARACTERS, false);
-              return INITIAL_CHARACTERS;
-            }
-
-            // Case B: Table has characters -> map and ensure canonical defaults
-            const mapped: Character[] = data.map((row: any) => this.mapSupabaseRowToCharacter(row));
-
-            // Check if Tuyên Lãng (char-1) exists in Supabase. If missing, auto-insert to Supabase!
-            const hasTuyenLang = mapped.some((c) => c.name === 'Tuyên Lãng');
-            if (!hasTuyenLang) {
-              try {
-                const tl = INITIAL_CHARACTERS[0];
-                await supabase.from('characters').insert({
-                  id: tl.id,
-                  name: tl.name,
-                  role: tl.role || null,
-                  age: tl.age ? Number(tl.age) : null,
-                  appearance: tl.appearance || null,
-                  avatar: tl.avatar,
-                  avatar_url: tl.avatarUrl || tl.avatar,
-                  short_description: tl.shortDescription || '',
-                  description: tl.description || '',
-                  character_link: tl.characterLink || null,
-                  is_locked: false,
-                  unlock_type: 'none',
-                  quote: tl.quote || null,
-                  tags: tl.tags || [],
-                });
-              } catch (insErr) {
-                console.warn('[CharacterRepository] Auto-insert Tuyên Lãng to Supabase warning:', insErr);
-              }
-            }
-
-            const merged = this.mergeWithDefaults(mapped);
-            this.saveCatalog(merged, false);
-            return merged;
-          }
-        } catch (err) {
-          console.warn('[CharacterRepository] Supabase getAllCharacters query error:', err);
-        }
-      }
-    }
-
-    // 2. FALLBACK: Sync with server persistent database (/api/characters)
-    try {
-      const res = await fetch('/api/characters');
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && Array.isArray(data.characters) && data.characters.length > 0) {
-          const merged = this.mergeWithDefaults(data.characters);
-          this.saveCatalog(merged, false);
-          return merged;
-        }
-      }
-    } catch (apiErr) {
-      // Local fallback on network failure
-    }
-
-    return this.loadCatalog();
+    return INITIAL_CHARACTERS;
   }
 
   /**

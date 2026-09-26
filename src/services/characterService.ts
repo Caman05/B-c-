@@ -87,28 +87,18 @@ function saveCatalog(characters: Character[]): void {
 
 export const characterService = {
   /**
-   * Synchronous load for initial state hydration
+   * Synchronous load for initial state hydration directly from code
    */
   getCharactersSync(userId?: string, includeHidden = false): Character[] {
-    let catalog = characterRepository.loadCatalog();
-    if (!catalog.some((c) => c.name === 'Tuyên Lãng')) {
-      catalog = characterRepository.mergeWithDefaults(catalog);
-      characterRepository.saveCatalog(catalog, false);
-    }
-    const list = catalog.map((c) => normalizeCharacter(c, userId));
+    const list = INITIAL_CHARACTERS.map((c) => normalizeCharacter(c, userId));
     return includeHidden ? list : list.filter((c) => !c.isHidden);
   },
 
   /**
-   * Asynchronous fetch syncing with persistent server database
+   * Asynchronous fetch directly from canonical characters code
    */
   async getCharacters(userId?: string, includeHidden = false): Promise<Character[]> {
-    let catalog = await characterRepository.getAllCharacters();
-    if (!catalog.some((c) => c.name === 'Tuyên Lãng')) {
-      catalog = characterRepository.mergeWithDefaults(catalog);
-      characterRepository.saveCatalog(catalog, false);
-    }
-    const list = catalog.map((c) => normalizeCharacter(c, userId));
+    const list = INITIAL_CHARACTERS.map((c) => normalizeCharacter(c, userId));
     return includeHidden ? list : list.filter((c) => !c.isHidden);
   },
 
@@ -116,8 +106,7 @@ export const characterService = {
    * Get character by ID with current user's unlock & favorite states
    */
   async getCharacterById(id: string, userId?: string): Promise<Character | null> {
-    const catalog = await characterRepository.getAllCharacters();
-    const found = catalog.find((c) => c.id === id);
+    const found = INITIAL_CHARACTERS.find((c) => c.id === id);
     if (!found) return null;
     return normalizeCharacter(found, userId);
   },
