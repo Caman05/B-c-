@@ -14,8 +14,8 @@ import {
   normalizePersistentImageReference 
 } from '../lib/imageUtils';
 
-export const CHARACTERS_VERSION = 6;
-export const STORAGE_KEY_CHARACTERS = 'be_ca_characters_v6';
+export const CHARACTERS_VERSION = 7;
+export const STORAGE_KEY_CHARACTERS = 'be_ca_characters_v7';
 export const STORAGE_KEY_CHARACTERS_VERSION = 'be_ca_characters_version';
 const LEGACY_STORAGE_KEYS = [
   'be_ca_characters',
@@ -24,6 +24,7 @@ const LEGACY_STORAGE_KEYS = [
   'be_ca_characters_v3',
   'be_ca_characters_v4',
   'be_ca_characters_v5',
+  'be_ca_characters_v6',
 ];
 const STORAGE_KEY_SECRETS = 'be_ca_character_secrets_v2';
 
@@ -36,17 +37,36 @@ const DEFAULT_SECRETS: Record<string, string> = {
 class CharacterRepository {
   /**
    * Guarantees that all default characters from INITIAL_CHARACTERS exist in the catalog
+   * and are always positioned at the head of the list in canonical order.
    */
   public mergeWithDefaults(list: Character[]): Character[] {
-    const existingIds = new Set(list.map((c) => c.id));
-    const merged = [...list];
-    for (const defChar of INITIAL_CHARACTERS) {
-      if (!existingIds.has(defChar.id)) {
-        merged.push(defChar);
-        existingIds.add(defChar.id);
+    const defaultIds = new Set(INITIAL_CHARACTERS.map((c) => c.id));
+    const listMap = new Map(list.map((c) => [c.id, c]));
+
+    // 1. Process default characters: always placed at the top in canonical order
+    const mergedDefaults: Character[] = INITIAL_CHARACTERS.map((defChar) => {
+      const existing = listMap.get(defChar.id);
+      if (!existing) return defChar;
+
+      // Special case: If char-1 has legacy name 'Lâm Ngôn', upgrade immediately to 'Tuyên Lãng'
+      if (defChar.id === 'char-1' && existing.name === 'Lâm Ngôn') {
+        return defChar;
       }
-    }
-    return merged;
+
+      // Merge existing data with default definition so required fields are preserved
+      return {
+        ...defChar,
+        ...existing,
+        // Ensure char-1 has Tuyên Lãng attributes
+        ...(defChar.id === 'char-1' && existing.name !== 'Tuyên Lãng' ? defChar : {}),
+      };
+    });
+
+    // 2. Custom characters added by users/admins (IDs not in INITIAL_CHARACTERS)
+    const customChars = list.filter((c) => !defaultIds.has(c.id));
+
+    // Default characters are guaranteed at the top of the list!
+    return [...mergedDefaults, ...customChars];
   }
 
   /**
@@ -57,7 +77,7 @@ class CharacterRepository {
       let raw = localStorage.getItem(STORAGE_KEY_CHARACTERS);
       if (!raw) {
         // Attempt migration from previous versions
-        for (const legKey of ['be_ca_characters_v5', 'be_ca_characters_v4', 'be_ca_characters']) {
+        for (const legKey of ['be_ca_characters_v6', 'be_ca_characters_v5', 'be_ca_characters_v4', 'be_ca_characters']) {
           const legData = localStorage.getItem(legKey);
           if (legData) {
             raw = legData;
