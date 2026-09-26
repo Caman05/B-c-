@@ -63,6 +63,9 @@ export interface Character {
   // Metadata attributes (completely free-form and dynamic)
   quote?: string;
   lore?: string;
+  role?: string;
+  age?: number | string;
+  appearance?: string;
   tags: string[]; // Free-text dynamic tags: ["Nam", "Sinh viên", "OC"], ["Nữ", "Phản diện"], or []
 
   createdAt: string;

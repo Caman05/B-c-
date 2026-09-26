@@ -6,7 +6,6 @@ import { isSupabaseConfigured, getSupabase } from '../lib/supabaseClient';
 
 const STORAGE_KEY_TAGS = 'be_ca_dynamic_tags_v2';
 const STORAGE_KEY_DELETED_TAGS = 'be_ca_deleted_tags_v2';
-const STORAGE_KEY_CHARACTERS = 'be_ca_characters_v5';
 
 // Obsolete tags that were removed from the system and must be purged
 export const OBSOLETE_TAG_NAMES = ['ẩn sĩ', 'chiến binh', 'cổ phong', 'ký ức'];

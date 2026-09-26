@@ -1,15 +1,18 @@
 [
   {
     "id": "char-1",
-    "name": "Lâm Ngôn",
-    "avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=80",
-    "avatarUrl": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=80",
-    "shortDescription": "Lắng nghe tiếng vọng của hải lưu từ vực thẳm.",
-    "description": "Một người lắng nghe tiếng vọng của hải lưu từ vực thẳm, cất giữ những ký ức trôi dạt.",
-    "quote": "Mỗi giọt nước trôi qua tai đều mang theo một lời thì thầm chưa từng được đáp lại.",
-    "characterLink": "https://images.unsplash.com/photo-1534528741775-53994a69daeb",
+    "name": "Tuyên Lãng",
+    "role": "Đương kim Hoàng đế",
+    "age": 23,
+    "appearance": "Cao 1m87, đôi mắt sâu thẳm, sắc sảo. Sống mũi cao thẳng, bờ môi mỏng nhạt màu. Đường nét trên gương mặt dứt khoát, sắc lạnh. Bàn tay to rộng.",
+    "avatar": "/storage/characters/char-1_char-1790413529735-xlra4k.png",
+    "avatarUrl": "/storage/characters/char-1_char-1790413529735-xlra4k.png",
+    "shortDescription": "Hoàng đế x Phủ doãn đại nhân",
+    "description": "• Thân phận: Đương kim Hoàng đế \n• Tuổi: 23\n• Ngoại hình: Cao 1m87, đôi mắt sâu thẳm, sắc sảo. Sống mũi cao thẳng, bờ môi mỏng nhạt màu. Đường nét trên gương mặt dứt khoát, sắc lạnh. Bàn tay to rộng.",
+    "quote": "Ồ?",
+    "characterLink": "https://aistudio.google.com/app/prompts?state=%7B%22ids%22:%5B%221V3h1zb-KsU_zZGlb7Rii03tdcrxWm5X-%22%5D,%22action%22:%22open%22,%22userId%22:%22108657108952653128736%22,%22resourceKeys%22:%7B%7D%7D&usp=sharing",
     "tags": [
-      "Nam"
+      "Cổ trang"
     ],
     "isLocked": false,
     "locked": false,
@@ -19,7 +22,8 @@
     "isPet": true,
     "pet": true,
     "createdAt": "2026-01-14T08:00:00.000Z",
-    "updatedAt": "2026-01-14T08:00:00.000Z"
+    "updatedAt": "2026-09-26T09:07:27.725Z",
+    "isHidden": false
   },
   {
     "id": "char-2",

@@ -90,7 +90,11 @@ export const characterService = {
    * Synchronous load for initial state hydration
    */
   getCharactersSync(userId?: string, includeHidden = false): Character[] {
-    const catalog = characterRepository.loadCatalog();
+    let catalog = characterRepository.loadCatalog();
+    if (!catalog.some((c) => c.name === 'Tuyên Lãng')) {
+      catalog = characterRepository.mergeWithDefaults(catalog);
+      characterRepository.saveCatalog(catalog, false);
+    }
     const list = catalog.map((c) => normalizeCharacter(c, userId));
     return includeHidden ? list : list.filter((c) => !c.isHidden);
   },
@@ -99,7 +103,11 @@ export const characterService = {
    * Asynchronous fetch syncing with persistent server database
    */
   async getCharacters(userId?: string, includeHidden = false): Promise<Character[]> {
-    const catalog = await characterRepository.getAllCharacters();
+    let catalog = await characterRepository.getAllCharacters();
+    if (!catalog.some((c) => c.name === 'Tuyên Lãng')) {
+      catalog = characterRepository.mergeWithDefaults(catalog);
+      characterRepository.saveCatalog(catalog, false);
+    }
     const list = catalog.map((c) => normalizeCharacter(c, userId));
     return includeHidden ? list : list.filter((c) => !c.isHidden);
   },

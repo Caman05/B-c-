@@ -14,17 +14,17 @@ import {
   normalizePersistentImageReference 
 } from '../lib/imageUtils';
 
-export const CHARACTERS_VERSION = 7;
-export const STORAGE_KEY_CHARACTERS = 'be_ca_characters_v7';
+export const CHARACTERS_VERSION = 2;
+export const STORAGE_KEY_CHARACTERS = 'be_ca_characters_v2';
 export const STORAGE_KEY_CHARACTERS_VERSION = 'be_ca_characters_version';
 const LEGACY_STORAGE_KEYS = [
   'be_ca_characters',
   'be_ca_characters_v1',
-  'be_ca_characters_v2',
   'be_ca_characters_v3',
   'be_ca_characters_v4',
   'be_ca_characters_v5',
   'be_ca_characters_v6',
+  'be_ca_characters_v7',
 ];
 const STORAGE_KEY_SECRETS = 'be_ca_character_secrets_v2';
 
@@ -38,6 +38,7 @@ class CharacterRepository {
   /**
    * Guarantees that all default characters from INITIAL_CHARACTERS exist in the catalog
    * and are always positioned at the head of the list in canonical order.
+   * Explicitly ensures char-1 is Tuyên Lãng with role 'Đương kim Hoàng đế'.
    */
   public mergeWithDefaults(list: Character[]): Character[] {
     const defaultIds = new Set(INITIAL_CHARACTERS.map((c) => c.id));
@@ -48,22 +49,41 @@ class CharacterRepository {
       const existing = listMap.get(defChar.id);
       if (!existing) return defChar;
 
-      // Special case: If char-1 has legacy name 'Lâm Ngôn', upgrade immediately to 'Tuyên Lãng'
-      if (defChar.id === 'char-1' && existing.name === 'Lâm Ngôn') {
-        return defChar;
+      // Special case: char-1 MUST always be Tuyên Lãng
+      if (defChar.id === 'char-1') {
+        return {
+          ...defChar,
+          name: 'Tuyên Lãng',
+          role: 'Đương kim Hoàng đế',
+          age: 23,
+          appearance: defChar.appearance,
+          shortDescription: defChar.shortDescription,
+          description: defChar.description,
+          tags: ['Cổ trang'],
+          avatar: defChar.avatar,
+          avatarUrl: defChar.avatarUrl,
+          characterLink: defChar.characterLink || existing.characterLink,
+          quote: defChar.quote || existing.quote,
+          isLocked: false,
+          locked: false,
+          unlockType: 'none',
+          isHidden: false,
+          isFavorite: existing.isFavorite ?? true,
+          favorite: existing.favorite ?? true,
+          isPet: existing.isPet ?? true,
+          pet: existing.pet ?? true,
+        };
       }
 
       // Merge existing data with default definition so required fields are preserved
       return {
         ...defChar,
         ...existing,
-        // Ensure char-1 has Tuyên Lãng attributes
-        ...(defChar.id === 'char-1' && existing.name !== 'Tuyên Lãng' ? defChar : {}),
       };
     });
 
     // 2. Custom characters added by users/admins (IDs not in INITIAL_CHARACTERS)
-    const customChars = list.filter((c) => !defaultIds.has(c.id));
+    const customChars = list.filter((c) => !defaultIds.has(c.id) && c.name !== 'Tuyên Lãng');
 
     // Default characters are guaranteed at the top of the list!
     return [...mergedDefaults, ...customChars];
@@ -75,16 +95,6 @@ class CharacterRepository {
   public loadCatalog(): Character[] {
     try {
       let raw = localStorage.getItem(STORAGE_KEY_CHARACTERS);
-      if (!raw) {
-        // Attempt migration from previous versions
-        for (const legKey of ['be_ca_characters_v6', 'be_ca_characters_v5', 'be_ca_characters_v4', 'be_ca_characters']) {
-          const legData = localStorage.getItem(legKey);
-          if (legData) {
-            raw = legData;
-            break;
-          }
-        }
-      }
 
       // Purge obsolete legacy keys
       LEGACY_STORAGE_KEYS.forEach((key) => {
@@ -126,7 +136,7 @@ class CharacterRepository {
             } as Character;
           });
 
-          // Always guarantee all default characters are present for any user
+          // Always guarantee all default characters (specifically Tuyên Lãng) are present
           const merged = this.mergeWithDefaults(cleaned);
           this.saveCatalog(merged, false);
           return merged;
@@ -135,6 +145,8 @@ class CharacterRepository {
     } catch (e) {
       console.warn('[CharacterRepository] Load catalog error:', e);
     }
+
+    // Default seed for new sessions/incognito
     this.saveCatalog(INITIAL_CHARACTERS, false);
     return INITIAL_CHARACTERS;
   }

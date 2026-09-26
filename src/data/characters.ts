@@ -4,6 +4,9 @@ export const INITIAL_CHARACTERS: Character[] = [
   {
     id: 'char-1',
     name: 'Tuyên Lãng',
+    role: 'Đương kim Hoàng đế',
+    age: 23,
+    appearance: 'Cao 1m87, đôi mắt sâu thẳm, sắc sảo. Sống mũi cao thẳng, bờ môi mỏng nhạt màu. Đường nét trên gương mặt dứt khoát, sắc lạnh. Bàn tay to rộng.',
     avatar: '/storage/characters/char-1_char-1790413529735-xlra4k.png',
     avatarUrl: '/storage/characters/char-1_char-1790413529735-xlra4k.png',
     shortDescription: 'Hoàng đế x Phủ doãn đại nhân',
